@@ -67,8 +67,8 @@ impl App {
     async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Esc | KeyCode::Backspace => self.go_back().await?,
-            KeyCode::Enter => self.go_forward().await?,
+            KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => self.go_back().await?,
+            KeyCode::Enter | KeyCode::Right => self.go_forward().await?,
             KeyCode::Up => self.previous_item(),
             KeyCode::Down => self.next_item(),
             _ => {}

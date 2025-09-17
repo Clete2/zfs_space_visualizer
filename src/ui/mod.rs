@@ -217,15 +217,15 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let (status_text, help_text) = match &app.current_view {
         AppView::PoolList => (
             "Pool List".to_string(),
-            "↑/↓: Navigate | Enter: View Datasets | q: Quit"
+            "↑/↓: Navigate | →/Enter: View Datasets | q: Quit"
         ),
         AppView::DatasetView(pool_name) => (
             format!("Datasets in {}", pool_name),
-            "↑/↓: Navigate | Enter: View Snapshots | Esc: Back | q: Quit"
+            "↑/↓: Navigate | →/Enter: View Snapshots | ←/Esc: Back | q: Quit"
         ),
         AppView::SnapshotDetail(_, dataset_name) => (
             format!("Snapshots in {}", dataset_name),
-            "↑/↓: Navigate | Esc: Back | q: Quit"
+            "↑/↓: Navigate | ←/Esc: Back | q: Quit"
         ),
     };
 
