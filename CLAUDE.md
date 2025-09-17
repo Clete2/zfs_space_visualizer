@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `cargo run` - Run the application locally (requires ZFS)
 - `cargo check` - Check for compilation errors
-- `./build.sh [target]` - Cross-compile for specified target (defaults to x86_64-unknown-linux-gnu)
+- `./build.sh [target]` - Cross-compile for specified target (defaults to x86_64-apple-darwin)
 - `./build.sh x86_64-apple-darwin` - Build for local macOS target
-- `./build.sh x86_64-unknown-linux-gnu` - Build for Linux and automatically deploy to cleteserver.home:/home/clete2/ (requires cross tool and Docker)
+- `./build.sh x86_64-unknown-linux-gnu` - Build for Linux (requires cross tool and Docker)
+- After building, manually deploy with: `scp target/[target]/release/zfs_space_visualizer cleteserver.home:/home/clete2/`
 
 ## Architecture Overview
 
@@ -45,6 +46,7 @@ The application follows a hierarchical navigation pattern:
 
 ## Development Preferences
 
-- After every iteration: Build for x86_64-unknown-linux-gnu and deploy to cleteserver.home:/home/clete2/
+- After every iteration: Build and deploy to cleteserver.home:/home/clete2/
 - Use semantic commits for all changes
 - Create feature branches for major new features only
+- Never auto-deploy - always run scp command manually
