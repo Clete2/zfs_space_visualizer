@@ -1,0 +1,11 @@
+[package]
+name = "zfs_space_visualizer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = "0.28"
+crossterm = "0.28"
+tokio = { version = "1.40", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
