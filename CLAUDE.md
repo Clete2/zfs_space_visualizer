@@ -40,7 +40,7 @@ The application follows a hierarchical navigation pattern:
 
 ### ZFS Integration
 - Executes `zpool list -H -p` for pool information
-- Executes `zfs list -H -p -r -o name,used,avail,refer,usedsnapshots <pool>` for datasets
+- Executes `zfs list -H -p -r -o name,used,avail,refer,usedbysnapshots <pool>` for datasets
 - Executes `zfs list -H -p -t snap -r -o name,used,refer,creation <dataset>` for snapshots
 - All commands use machine-readable output formats (-H -p flags)
 

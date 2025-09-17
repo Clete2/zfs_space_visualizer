@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{
     backend::Backend,
     Terminal,
@@ -54,7 +54,7 @@ impl App {
             terminal.draw(|f| crate::ui::draw(f, self))?;
 
             if let Event::Key(key) = event::read()? {
-                self.handle_key_event(key.code).await?;
+                self.handle_key_event(key.code, key.modifiers).await?;
             }
 
             if self.should_quit {
@@ -64,9 +64,10 @@ impl App {
         Ok(())
     }
 
-    async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
+    async fn handle_key_event(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Result<()> {
         match key {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
             KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => self.go_back().await?,
             KeyCode::Enter | KeyCode::Right => self.go_forward().await?,
             KeyCode::Up => self.previous_item(),

@@ -64,7 +64,7 @@ pub async fn get_pools() -> Result<Vec<Pool>> {
 
 pub async fn get_datasets(pool_name: &str) -> Result<Vec<Dataset>> {
     let output = TokioCommand::new("zfs")
-        .args(&["list", "-H", "-p", "-r", "-o", "name,used,avail,refer,usedsnapshots", pool_name])
+        .args(&["list", "-H", "-p", "-r", "-o", "name,used,avail,refer,usedbysnapshots", pool_name])
         .output()
         .await?;
 
