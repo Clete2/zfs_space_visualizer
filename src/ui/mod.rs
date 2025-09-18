@@ -196,8 +196,12 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
 
     // Sort indicator
     let sort_indicator = match app.dataset_sort_order {
-        crate::app::SortOrder::SizeDesc => "Size ↓",
-        crate::app::SortOrder::SizeAsc => "Size ↑",
+        crate::app::SortOrder::TotalSizeDesc => "Total ↓",
+        crate::app::SortOrder::TotalSizeAsc => "Total ↑",
+        crate::app::SortOrder::DatasetSizeDesc => "Dataset ↓",
+        crate::app::SortOrder::DatasetSizeAsc => "Dataset ↑",
+        crate::app::SortOrder::SnapshotSizeDesc => "Snapshots ↓",
+        crate::app::SortOrder::SnapshotSizeAsc => "Snapshots ↑",
         crate::app::SortOrder::NameDesc => "Name ↓",
         crate::app::SortOrder::NameAsc => "Name ↑",
     };
@@ -282,8 +286,12 @@ fn draw_snapshot_detail(
 
     // Sort indicator
     let sort_indicator = match app.snapshot_sort_order {
-        crate::app::SortOrder::SizeDesc => "Size ↓",
-        crate::app::SortOrder::SizeAsc => "Size ↑",
+        crate::app::SortOrder::TotalSizeDesc => "Total ↓",
+        crate::app::SortOrder::TotalSizeAsc => "Total ↑",
+        crate::app::SortOrder::DatasetSizeDesc => "Dataset ↓",
+        crate::app::SortOrder::DatasetSizeAsc => "Dataset ↑",
+        crate::app::SortOrder::SnapshotSizeDesc => "Snapshots ↓",
+        crate::app::SortOrder::SnapshotSizeAsc => "Snapshots ↑",
         crate::app::SortOrder::NameDesc => "Name ↓",
         crate::app::SortOrder::NameAsc => "Name ↑",
     };

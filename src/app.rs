@@ -23,8 +23,12 @@ pub enum Theme {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SortOrder {
-    SizeDesc,
-    SizeAsc,
+    TotalSizeDesc,
+    TotalSizeAsc,
+    DatasetSizeDesc,
+    DatasetSizeAsc,
+    SnapshotSizeDesc,
+    SnapshotSizeAsc,
     NameDesc,
     NameAsc,
 }
@@ -62,8 +66,8 @@ impl Default for App {
             selected_dataset_index: 0,
             selected_snapshot_index: 0,
             selected_theme_index: 0,
-            dataset_sort_order: SortOrder::SizeDesc,
-            snapshot_sort_order: SortOrder::SizeDesc,
+            dataset_sort_order: SortOrder::TotalSizeDesc,
+            snapshot_sort_order: SortOrder::TotalSizeDesc,
             dataset_scroll_offset: 0,
             snapshot_scroll_offset: 0,
         }
@@ -296,10 +300,14 @@ impl App {
         match &self.current_view {
             AppView::DatasetView(_) => {
                 self.dataset_sort_order = match self.dataset_sort_order {
-                    SortOrder::SizeDesc => SortOrder::SizeAsc,
-                    SortOrder::SizeAsc => SortOrder::NameDesc,
+                    SortOrder::TotalSizeDesc => SortOrder::TotalSizeAsc,
+                    SortOrder::TotalSizeAsc => SortOrder::DatasetSizeDesc,
+                    SortOrder::DatasetSizeDesc => SortOrder::DatasetSizeAsc,
+                    SortOrder::DatasetSizeAsc => SortOrder::SnapshotSizeDesc,
+                    SortOrder::SnapshotSizeDesc => SortOrder::SnapshotSizeAsc,
+                    SortOrder::SnapshotSizeAsc => SortOrder::NameDesc,
                     SortOrder::NameDesc => SortOrder::NameAsc,
-                    SortOrder::NameAsc => SortOrder::SizeDesc,
+                    SortOrder::NameAsc => SortOrder::TotalSizeDesc,
                 };
                 self.sort_datasets();
                 self.selected_dataset_index = 0;
@@ -307,10 +315,14 @@ impl App {
             }
             AppView::SnapshotDetail(_, _) => {
                 self.snapshot_sort_order = match self.snapshot_sort_order {
-                    SortOrder::SizeDesc => SortOrder::SizeAsc,
-                    SortOrder::SizeAsc => SortOrder::NameDesc,
+                    SortOrder::TotalSizeDesc => SortOrder::TotalSizeAsc,
+                    SortOrder::TotalSizeAsc => SortOrder::DatasetSizeDesc,
+                    SortOrder::DatasetSizeDesc => SortOrder::DatasetSizeAsc,
+                    SortOrder::DatasetSizeAsc => SortOrder::SnapshotSizeDesc,
+                    SortOrder::SnapshotSizeDesc => SortOrder::SnapshotSizeAsc,
+                    SortOrder::SnapshotSizeAsc => SortOrder::NameDesc,
                     SortOrder::NameDesc => SortOrder::NameAsc,
-                    SortOrder::NameAsc => SortOrder::SizeDesc,
+                    SortOrder::NameAsc => SortOrder::TotalSizeDesc,
                 };
                 self.sort_snapshots();
                 self.selected_snapshot_index = 0;
@@ -322,8 +334,12 @@ impl App {
 
     fn sort_datasets(&mut self) {
         match self.dataset_sort_order {
-            SortOrder::SizeDesc => self.datasets.sort_by(|a, b| b.used.cmp(&a.used)),
-            SortOrder::SizeAsc => self.datasets.sort_by(|a, b| a.used.cmp(&b.used)),
+            SortOrder::TotalSizeDesc => self.datasets.sort_by(|a, b| (b.referenced + b.snapshot_used).cmp(&(a.referenced + a.snapshot_used))),
+            SortOrder::TotalSizeAsc => self.datasets.sort_by(|a, b| (a.referenced + a.snapshot_used).cmp(&(b.referenced + b.snapshot_used))),
+            SortOrder::DatasetSizeDesc => self.datasets.sort_by(|a, b| b.referenced.cmp(&a.referenced)),
+            SortOrder::DatasetSizeAsc => self.datasets.sort_by(|a, b| a.referenced.cmp(&b.referenced)),
+            SortOrder::SnapshotSizeDesc => self.datasets.sort_by(|a, b| b.snapshot_used.cmp(&a.snapshot_used)),
+            SortOrder::SnapshotSizeAsc => self.datasets.sort_by(|a, b| a.snapshot_used.cmp(&b.snapshot_used)),
             SortOrder::NameDesc => self.datasets.sort_by(|a, b| b.name.cmp(&a.name)),
             SortOrder::NameAsc => self.datasets.sort_by(|a, b| a.name.cmp(&b.name)),
         }
@@ -331,8 +347,12 @@ impl App {
 
     fn sort_snapshots(&mut self) {
         match self.snapshot_sort_order {
-            SortOrder::SizeDesc => self.snapshots.sort_by(|a, b| b.used.cmp(&a.used)),
-            SortOrder::SizeAsc => self.snapshots.sort_by(|a, b| a.used.cmp(&b.used)),
+            SortOrder::TotalSizeDesc => self.snapshots.sort_by(|a, b| b.used.cmp(&a.used)),
+            SortOrder::TotalSizeAsc => self.snapshots.sort_by(|a, b| a.used.cmp(&b.used)),
+            SortOrder::DatasetSizeDesc => self.snapshots.sort_by(|a, b| b.referenced.cmp(&a.referenced)),
+            SortOrder::DatasetSizeAsc => self.snapshots.sort_by(|a, b| a.referenced.cmp(&b.referenced)),
+            SortOrder::SnapshotSizeDesc => self.snapshots.sort_by(|a, b| b.used.cmp(&a.used)), // For snapshots, used is the snapshot size
+            SortOrder::SnapshotSizeAsc => self.snapshots.sort_by(|a, b| a.used.cmp(&b.used)),
             SortOrder::NameDesc => self.snapshots.sort_by(|a, b| b.name.cmp(&a.name)),
             SortOrder::NameAsc => self.snapshots.sort_by(|a, b| a.name.cmp(&b.name)),
         }
