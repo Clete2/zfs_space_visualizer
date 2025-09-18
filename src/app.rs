@@ -21,6 +21,14 @@ pub enum Theme {
     Light,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SortOrder {
+    SizeDesc,
+    SizeAsc,
+    NameDesc,
+    NameAsc,
+}
+
 #[derive(Debug)]
 pub struct App {
     pub should_quit: bool,
@@ -34,6 +42,10 @@ pub struct App {
     pub selected_dataset_index: usize,
     pub selected_snapshot_index: usize,
     pub selected_theme_index: usize,
+    pub dataset_sort_order: SortOrder,
+    pub snapshot_sort_order: SortOrder,
+    pub dataset_scroll_offset: usize,
+    pub snapshot_scroll_offset: usize,
 }
 
 impl Default for App {
@@ -50,6 +62,10 @@ impl Default for App {
             selected_dataset_index: 0,
             selected_snapshot_index: 0,
             selected_theme_index: 0,
+            dataset_sort_order: SortOrder::SizeDesc,
+            snapshot_sort_order: SortOrder::SizeDesc,
+            dataset_scroll_offset: 0,
+            snapshot_scroll_offset: 0,
         }
     }
 }
@@ -95,6 +111,7 @@ impl App {
                     KeyCode::Char('q') => self.should_quit = true,
                     KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
                     KeyCode::Char('h') => self.show_help(),
+                    KeyCode::Char('s') => self.toggle_sort(),
                     KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => self.go_back().await?,
                     KeyCode::Enter | KeyCode::Right => self.go_forward().await?,
                     KeyCode::Up => self.previous_item(),
@@ -209,11 +226,17 @@ impl App {
 
     async fn load_datasets(&mut self, pool_name: &str) -> Result<()> {
         self.datasets = crate::zfs::get_datasets(pool_name).await?;
+        self.sort_datasets();
+        self.selected_dataset_index = 0;
+        self.dataset_scroll_offset = 0;
         Ok(())
     }
 
     async fn load_snapshots(&mut self, dataset_name: &str) -> Result<()> {
         self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
+        self.sort_snapshots();
+        self.selected_snapshot_index = 0;
+        self.snapshot_scroll_offset = 0;
         Ok(())
     }
 
@@ -266,6 +289,92 @@ impl App {
                 selected: ratatui::style::Color::Magenta,
                 warning: ratatui::style::Color::Red,
             },
+        }
+    }
+
+    fn toggle_sort(&mut self) {
+        match &self.current_view {
+            AppView::DatasetView(_) => {
+                self.dataset_sort_order = match self.dataset_sort_order {
+                    SortOrder::SizeDesc => SortOrder::SizeAsc,
+                    SortOrder::SizeAsc => SortOrder::NameDesc,
+                    SortOrder::NameDesc => SortOrder::NameAsc,
+                    SortOrder::NameAsc => SortOrder::SizeDesc,
+                };
+                self.sort_datasets();
+                self.selected_dataset_index = 0;
+                self.dataset_scroll_offset = 0;
+            }
+            AppView::SnapshotDetail(_, _) => {
+                self.snapshot_sort_order = match self.snapshot_sort_order {
+                    SortOrder::SizeDesc => SortOrder::SizeAsc,
+                    SortOrder::SizeAsc => SortOrder::NameDesc,
+                    SortOrder::NameDesc => SortOrder::NameAsc,
+                    SortOrder::NameAsc => SortOrder::SizeDesc,
+                };
+                self.sort_snapshots();
+                self.selected_snapshot_index = 0;
+                self.snapshot_scroll_offset = 0;
+            }
+            _ => {} // No sorting for pool list or help
+        }
+    }
+
+    fn sort_datasets(&mut self) {
+        match self.dataset_sort_order {
+            SortOrder::SizeDesc => self.datasets.sort_by(|a, b| b.used.cmp(&a.used)),
+            SortOrder::SizeAsc => self.datasets.sort_by(|a, b| a.used.cmp(&b.used)),
+            SortOrder::NameDesc => self.datasets.sort_by(|a, b| b.name.cmp(&a.name)),
+            SortOrder::NameAsc => self.datasets.sort_by(|a, b| a.name.cmp(&b.name)),
+        }
+    }
+
+    fn sort_snapshots(&mut self) {
+        match self.snapshot_sort_order {
+            SortOrder::SizeDesc => self.snapshots.sort_by(|a, b| b.used.cmp(&a.used)),
+            SortOrder::SizeAsc => self.snapshots.sort_by(|a, b| a.used.cmp(&b.used)),
+            SortOrder::NameDesc => self.snapshots.sort_by(|a, b| b.name.cmp(&a.name)),
+            SortOrder::NameAsc => self.snapshots.sort_by(|a, b| a.name.cmp(&b.name)),
+        }
+    }
+
+    pub fn get_visible_range(&self, total_items: usize, visible_height: usize) -> (usize, usize) {
+        let scroll_offset = match &self.current_view {
+            AppView::DatasetView(_) => self.dataset_scroll_offset,
+            AppView::SnapshotDetail(_, _) => self.snapshot_scroll_offset,
+            _ => 0,
+        };
+
+        let start = scroll_offset;
+        let end = (start + visible_height).min(total_items);
+        (start, end)
+    }
+
+    pub fn update_scroll(&mut self, visible_height: usize) {
+        match &self.current_view {
+            AppView::DatasetView(_) => {
+                let total_items = self.datasets.len();
+                if self.selected_dataset_index >= self.dataset_scroll_offset + visible_height {
+                    self.dataset_scroll_offset = self.selected_dataset_index.saturating_sub(visible_height - 1);
+                } else if self.selected_dataset_index < self.dataset_scroll_offset {
+                    self.dataset_scroll_offset = self.selected_dataset_index;
+                }
+                if self.dataset_scroll_offset + visible_height > total_items && total_items > visible_height {
+                    self.dataset_scroll_offset = total_items.saturating_sub(visible_height);
+                }
+            }
+            AppView::SnapshotDetail(_, _) => {
+                let total_items = self.snapshots.len();
+                if self.selected_snapshot_index >= self.snapshot_scroll_offset + visible_height {
+                    self.snapshot_scroll_offset = self.selected_snapshot_index.saturating_sub(visible_height - 1);
+                } else if self.selected_snapshot_index < self.snapshot_scroll_offset {
+                    self.snapshot_scroll_offset = self.selected_snapshot_index;
+                }
+                if self.snapshot_scroll_offset + visible_height > total_items && total_items > visible_height {
+                    self.snapshot_scroll_offset = total_items.saturating_sub(visible_height);
+                }
+            }
+            _ => {}
         }
     }
 }

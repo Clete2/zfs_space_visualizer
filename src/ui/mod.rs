@@ -13,18 +13,22 @@ use crate::{
     zfs::format_bytes,
 };
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
         .split(f.area());
 
+    // Update scrolling for current view
+    let visible_height = chunks[0].height.saturating_sub(2) as usize;
+    app.update_scroll(visible_height);
+
     // Main content area
-    match &app.current_view {
+    match &app.current_view.clone() {
         AppView::PoolList => draw_pool_list(f, chunks[0], app),
-        AppView::DatasetView(pool_name) => draw_dataset_view(f, chunks[0], app, pool_name),
+        AppView::DatasetView(pool_name) => draw_dataset_view(f, chunks[0], app, &pool_name.clone()),
         AppView::SnapshotDetail(pool_name, dataset_name) => {
-            draw_snapshot_detail(f, chunks[0], app, pool_name, dataset_name)
+            draw_snapshot_detail(f, chunks[0], app, &pool_name.clone(), &dataset_name.clone())
         }
         AppView::Help => draw_help_screen(f, chunks[0], app),
     }
@@ -86,11 +90,32 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
 
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let colors = app.get_theme_colors();
+
+    // Calculate fixed width for dataset names
+    let max_name_width = app.datasets
+        .iter()
+        .map(|d| {
+            let short_name = d.name.strip_prefix(pool_name)
+                .unwrap_or(&d.name)
+                .trim_start_matches('/');
+            short_name.len()
+        })
+        .max()
+        .unwrap_or(20)
+        .max(20); // Minimum width of 20
+
+    // Calculate visible area height (subtract 2 for borders)
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let (start, end) = app.get_visible_range(app.datasets.len(), visible_height);
+
     let items: Vec<ListItem> = app
         .datasets
         .iter()
         .enumerate()
+        .skip(start)
+        .take(end - start)
         .map(|(i, dataset)| {
+            let actual_index = start + i;
             let total_used = dataset.used;
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
@@ -131,9 +156,10 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
 
             let content = vec![Line::from(vec![
                 Span::styled(
-                    format!("{:<30}", short_name),
+                    format!("{:<width$}", short_name, width = max_name_width),
                     Style::default().fg(colors.selected),
                 ),
+                Span::raw(" "),
                 Span::styled(
                     bar,
                     Style::default().fg(colors.accent),
@@ -146,7 +172,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
                 ), Style::default().fg(colors.text)),
             ])];
 
-            ListItem::new(content).style(if i == app.selected_dataset_index {
+            ListItem::new(content).style(if actual_index == app.selected_dataset_index {
                 Style::default().bg(colors.highlight)
             } else {
                 Style::default()
@@ -154,10 +180,20 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
         })
         .collect();
 
+    // Sort indicator
+    let sort_indicator = match app.dataset_sort_order {
+        crate::app::SortOrder::SizeDesc => "Size ↓",
+        crate::app::SortOrder::SizeAsc => "Size ↑",
+        crate::app::SortOrder::NameDesc => "Name ↓",
+        crate::app::SortOrder::NameAsc => "Name ↑",
+    };
+
+    let title = format!("Datasets in Pool: {} (Sort: {})", pool_name, sort_indicator);
+
     let datasets_list = List::new(items)
         .block(
             Block::default()
-                .title(format!("Datasets in Pool: {}", pool_name))
+                .title(title)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
@@ -175,11 +211,33 @@ fn draw_snapshot_detail(
     dataset_name: &str,
 ) {
     let colors = app.get_theme_colors();
+
+    // Calculate fixed width for snapshot names
+    let max_name_width = app.snapshots
+        .iter()
+        .map(|s| {
+            let short_name = s.name
+                .split('@')
+                .last()
+                .unwrap_or(&s.name);
+            short_name.len()
+        })
+        .max()
+        .unwrap_or(20)
+        .max(20); // Minimum width of 20
+
+    // Calculate visible area height (subtract 2 for borders)
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let (start, end) = app.get_visible_range(app.snapshots.len(), visible_height);
+
     let items: Vec<ListItem> = app
         .snapshots
         .iter()
         .enumerate()
+        .skip(start)
+        .take(end - start)
         .map(|(i, snapshot)| {
+            let actual_index = start + i;
             // Extract just the snapshot name (after the @)
             let short_name = snapshot.name
                 .split('@')
@@ -188,9 +246,10 @@ fn draw_snapshot_detail(
 
             let content = vec![Line::from(vec![
                 Span::styled(
-                    format!("{:<40}", short_name),
+                    format!("{:<width$}", short_name, width = max_name_width),
                     Style::default().fg(colors.selected),
                 ),
+                Span::raw(" "),
                 Span::styled(format!(
                     " {:>8} {:>8} {}",
                     format_bytes(snapshot.used),
@@ -199,7 +258,7 @@ fn draw_snapshot_detail(
                 ), Style::default().fg(colors.text)),
             ])];
 
-            ListItem::new(content).style(if i == app.selected_snapshot_index {
+            ListItem::new(content).style(if actual_index == app.selected_snapshot_index {
                 Style::default().bg(colors.highlight)
             } else {
                 Style::default()
@@ -207,10 +266,20 @@ fn draw_snapshot_detail(
         })
         .collect();
 
+    // Sort indicator
+    let sort_indicator = match app.snapshot_sort_order {
+        crate::app::SortOrder::SizeDesc => "Size ↓",
+        crate::app::SortOrder::SizeAsc => "Size ↑",
+        crate::app::SortOrder::NameDesc => "Name ↓",
+        crate::app::SortOrder::NameAsc => "Name ↑",
+    };
+
+    let title = format!("Snapshots in Dataset: {} (Sort: {})", dataset_name, sort_indicator);
+
     let snapshots_list = List::new(items)
         .block(
             Block::default()
-                .title(format!("Snapshots in Dataset: {}", dataset_name))
+                .title(title)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
@@ -229,11 +298,11 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
         ),
         AppView::DatasetView(pool_name) => (
             format!("Datasets in {}", pool_name),
-            "↑/↓: Navigate | →/Enter: View Snapshots | ←/Esc: Back | h: Help | q: Quit"
+            "↑/↓: Navigate | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit"
         ),
         AppView::SnapshotDetail(_, dataset_name) => (
             format!("Snapshots in {}", dataset_name),
-            "↑/↓: Navigate | ←/Esc: Back | h: Help | q: Quit"
+            "↑/↓: Navigate | s: Sort | ←/Esc: Back | h: Help | q: Quit"
         ),
         AppView::Help => (
             "Help & Settings".to_string(),
