@@ -8,6 +8,7 @@ pub struct Pool {
     pub allocated: u64,
     pub free: u64,
     pub health: String,
+    pub usable_size: u64, // Actual usable space from zfs list (accounts for redundancy)
 }
 
 #[derive(Debug, Clone)]
@@ -48,17 +49,45 @@ pub async fn get_pools() -> Result<Vec<Pool>> {
 
         let fields: Vec<&str> = line.split('\t').collect();
         if fields.len() >= 7 {
+            let pool_name = fields[0].to_string();
+            let usable_size = get_pool_usable_size(&pool_name).await.unwrap_or(fields[1].parse().unwrap_or(0));
+
             pools.push(Pool {
-                name: fields[0].to_string(),
+                name: pool_name,
                 size: fields[1].parse().unwrap_or(0),
                 allocated: fields[2].parse().unwrap_or(0),
                 free: fields[3].parse().unwrap_or(0),
                 health: fields[9].to_string(),
+                usable_size,
             });
         }
     }
 
     Ok(pools)
+}
+
+async fn get_pool_usable_size(pool_name: &str) -> Result<u64> {
+    let output = TokioCommand::new("zfs")
+        .args(&["list", "-H", "-p", "-o", "used,avail", pool_name])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Err(anyhow!("Failed to execute zfs list for pool {}: {}",
+            pool_name, String::from_utf8_lossy(&output.stderr)));
+    }
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let line = stdout.lines().next().ok_or_else(|| anyhow!("No output from zfs list"))?;
+
+    let fields: Vec<&str> = line.split('\t').collect();
+    if fields.len() >= 2 {
+        let used: u64 = fields[0].parse().unwrap_or(0);
+        let avail: u64 = fields[1].parse().unwrap_or(0);
+        Ok(used + avail) // Total usable space = used + available
+    } else {
+        Err(anyhow!("Invalid zfs list output format"))
+    }
 }
 
 

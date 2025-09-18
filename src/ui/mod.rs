@@ -91,11 +91,11 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let colors = app.get_theme_colors();
 
-    // Find the current pool to get its size for normalization
-    let pool_size = app.pools
+    // Find the current pool to get its usable size for normalization
+    let pool_usable_size = app.pools
         .iter()
         .find(|p| p.name == pool_name)
-        .map(|p| p.size)
+        .map(|p| p.usable_size)
         .unwrap_or(1); // Default to 1 to avoid division by zero
 
     // Calculate fixed width for dataset names
@@ -126,9 +126,9 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
-            // Calculate percentages relative to pool size for normalization
-            let dataset_percent = (dataset_only as f64 / pool_size as f64 * 100.0).min(100.0);
-            let snapshot_percent = (snapshot_used as f64 / pool_size as f64 * 100.0).min(100.0);
+            // Calculate percentages relative to pool usable size for normalization
+            let dataset_percent = (dataset_only as f64 / pool_usable_size as f64 * 100.0).min(100.0);
+            let snapshot_percent = (snapshot_used as f64 / pool_usable_size as f64 * 100.0).min(100.0);
 
             // Create separate bars
             let bar_width = 20; // Smaller bars since we have two
