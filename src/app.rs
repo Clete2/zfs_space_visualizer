@@ -6,6 +6,7 @@ use ratatui::{
 };
 
 use crate::zfs::{Pool, Dataset, Snapshot};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum AppView {
@@ -42,6 +43,7 @@ pub struct App {
     pub pools: Vec<Pool>,
     pub datasets: Vec<Dataset>,
     pub snapshots: Vec<Snapshot>,
+    pub snapshot_cache: HashMap<String, Vec<Snapshot>>, // Cache snapshots by dataset name
     pub selected_pool_index: usize,
     pub selected_dataset_index: usize,
     pub selected_snapshot_index: usize,
@@ -62,6 +64,7 @@ impl Default for App {
             pools: Vec::new(),
             datasets: Vec::new(),
             snapshots: Vec::new(),
+            snapshot_cache: HashMap::new(),
             selected_pool_index: 0,
             selected_dataset_index: 0,
             selected_snapshot_index: 0,
@@ -225,6 +228,42 @@ impl App {
 
     async fn load_pools(&mut self) -> Result<()> {
         self.pools = crate::zfs::get_pools().await?;
+
+        // Start background prefetch of all snapshots
+        self.prefetch_all_snapshots().await?;
+
+        Ok(())
+    }
+
+    async fn prefetch_all_snapshots(&mut self) -> Result<()> {
+        // Get all datasets from all pools to prefetch their snapshots
+        let mut all_datasets = Vec::new();
+
+        for pool in &self.pools {
+            match crate::zfs::get_datasets(&pool.name).await {
+                Ok(datasets) => {
+                    all_datasets.extend(datasets);
+                }
+                Err(_) => {
+                    // Continue with other pools if one fails
+                    continue;
+                }
+            }
+        }
+
+        // Prefetch snapshots for each dataset
+        for dataset in &all_datasets {
+            match crate::zfs::get_snapshots(&dataset.name).await {
+                Ok(snapshots) => {
+                    self.snapshot_cache.insert(dataset.name.clone(), snapshots);
+                }
+                Err(_) => {
+                    // Continue with other datasets if one fails
+                    continue;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -237,7 +276,16 @@ impl App {
     }
 
     async fn load_snapshots(&mut self, dataset_name: &str) -> Result<()> {
-        self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
+        // Try to get snapshots from cache first
+        if let Some(cached_snapshots) = self.snapshot_cache.get(dataset_name) {
+            self.snapshots = cached_snapshots.clone();
+        } else {
+            // Fall back to fetching if not in cache
+            self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
+            // Cache the result for future use
+            self.snapshot_cache.insert(dataset_name.to_string(), self.snapshots.clone());
+        }
+
         self.sort_snapshots();
         self.selected_snapshot_index = 0;
         self.snapshot_scroll_offset = 0;

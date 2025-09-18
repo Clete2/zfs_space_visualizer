@@ -230,6 +230,16 @@ fn draw_snapshot_detail(
 ) {
     let colors = app.get_theme_colors();
 
+    // Find the current dataset to get its total size for normalization
+    let dataset_total_size = app.datasets
+        .iter()
+        .find(|d| d.name == dataset_name)
+        .map(|d| d.referenced + d.snapshot_used)
+        .unwrap_or_else(|| {
+            // If not found in current datasets, calculate from snapshots
+            app.snapshots.iter().map(|s| s.used).sum::<u64>().max(1)
+        });
+
     // Calculate fixed width for snapshot names
     let max_name_width = app.snapshots
         .iter()
@@ -256,6 +266,42 @@ fn draw_snapshot_detail(
         .take(end - start)
         .map(|(i, snapshot)| {
             let actual_index = start + i;
+            let snapshot_used = snapshot.used;
+            let snapshot_referenced = snapshot.referenced;
+
+            // Calculate percentages relative to dataset total size for normalization
+            let used_percent = (snapshot_used as f64 / dataset_total_size as f64 * 100.0).min(100.0);
+            let referenced_percent = (snapshot_referenced as f64 / dataset_total_size as f64 * 100.0).min(100.0);
+
+            // Create separate bars
+            let bar_width = 20; // Smaller bars since we have two
+            let used_chars = (bar_width as f64 * used_percent / 100.0) as usize;
+            let referenced_chars = (bar_width as f64 * referenced_percent / 100.0) as usize;
+
+            // Used space bar (snapshot size)
+            let mut used_bar = String::new();
+            used_bar.push('[');
+            for j in 0..bar_width {
+                if j < used_chars {
+                    used_bar.push('▓');
+                } else {
+                    used_bar.push(' ');
+                }
+            }
+            used_bar.push(']');
+
+            // Referenced space bar (actual data size)
+            let mut referenced_bar = String::new();
+            referenced_bar.push('[');
+            for j in 0..bar_width {
+                if j < referenced_chars {
+                    referenced_bar.push('█');
+                } else {
+                    referenced_bar.push(' ');
+                }
+            }
+            referenced_bar.push(']');
+
             // Extract just the snapshot name (after the @)
             let short_name = snapshot.name
                 .split('@')
@@ -267,11 +313,20 @@ fn draw_snapshot_detail(
                     format!("{:<width$}", short_name, width = max_name_width),
                     Style::default().fg(colors.selected),
                 ),
-                Span::raw(" "),
+                Span::raw(" U:"),
+                Span::styled(
+                    used_bar,
+                    Style::default().fg(colors.text),
+                ),
+                Span::raw(" R:"),
+                Span::styled(
+                    referenced_bar,
+                    Style::default().fg(colors.accent),
+                ),
                 Span::styled(format!(
                     " {:>8} {:>8} {}",
-                    format_bytes(snapshot.used),
-                    format_bytes(snapshot.referenced),
+                    format_bytes(snapshot_used),
+                    format_bytes(snapshot_referenced),
                     snapshot.creation
                 ), Style::default().fg(colors.text)),
             ])];
@@ -376,8 +431,10 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
         Line::from("  Snapshot View  Shows snapshots in selected dataset"),
         Line::from(""),
         Line::from("LEGEND:"),
-        Line::from("  █ Dataset data    ▓ Snapshot data    ░ Free space"),
-        Line::from("  D: Dataset usage  S: Snapshot usage"),
+        Line::from("  Dataset View:"),
+        Line::from("    D: █ Dataset data    S: ▓ Snapshot data"),
+        Line::from("  Snapshot View:"),
+        Line::from("    U: ▓ Used space     R: █ Referenced data"),
     ];
 
     let help_paragraph = Paragraph::new(help_text)
