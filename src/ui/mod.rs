@@ -91,6 +91,13 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let colors = app.get_theme_colors();
 
+    // Find the current pool to get its size for normalization
+    let pool_size = app.pools
+        .iter()
+        .find(|p| p.name == pool_name)
+        .map(|p| p.size)
+        .unwrap_or(1); // Default to 1 to avoid division by zero
+
     // Calculate fixed width for dataset names
     let max_name_width = app.datasets
         .iter()
@@ -116,39 +123,41 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
         .take(end - start)
         .map(|(i, dataset)| {
             let actual_index = start + i;
-            let total_used = dataset.used;
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
-            let dataset_percent = if total_used > 0 {
-                (dataset_only as f64 / total_used as f64 * 100.0) as u16
-            } else {
-                100
-            };
+            // Calculate percentages relative to pool size for normalization
+            let dataset_percent = (dataset_only as f64 / pool_size as f64 * 100.0).min(100.0);
+            let snapshot_percent = (snapshot_used as f64 / pool_size as f64 * 100.0).min(100.0);
 
-            let snapshot_percent = if total_used > 0 {
-                (snapshot_used as f64 / total_used as f64 * 100.0) as u16
-            } else {
-                0
-            };
+            // Create separate bars
+            let bar_width = 20; // Smaller bars since we have two
+            let dataset_chars = (bar_width as f64 * dataset_percent / 100.0) as usize;
+            let snapshot_chars = (bar_width as f64 * snapshot_percent / 100.0) as usize;
 
-            // Create usage bar representation
-            let bar_width = 40;
-            let dataset_chars = (bar_width as f64 * dataset_percent as f64 / 100.0) as usize;
-            let snapshot_chars = (bar_width as f64 * snapshot_percent as f64 / 100.0) as usize;
-
-            let mut bar = String::new();
-            bar.push('[');
+            // Dataset bar
+            let mut dataset_bar = String::new();
+            dataset_bar.push('[');
             for j in 0..bar_width {
                 if j < dataset_chars {
-                    bar.push('█'); // Dataset usage
-                } else if j < dataset_chars + snapshot_chars {
-                    bar.push('▓'); // Snapshot usage
+                    dataset_bar.push('█');
                 } else {
-                    bar.push(' '); // Free space
+                    dataset_bar.push(' ');
                 }
             }
-            bar.push(']');
+            dataset_bar.push(']');
+
+            // Snapshot bar
+            let mut snapshot_bar = String::new();
+            snapshot_bar.push('[');
+            for j in 0..bar_width {
+                if j < snapshot_chars {
+                    snapshot_bar.push('▓');
+                } else {
+                    snapshot_bar.push(' ');
+                }
+            }
+            snapshot_bar.push(']');
 
             let short_name = dataset.name.strip_prefix(pool_name)
                 .unwrap_or(&dataset.name)
@@ -159,14 +168,19 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
                     format!("{:<width$}", short_name, width = max_name_width),
                     Style::default().fg(colors.selected),
                 ),
-                Span::raw(" "),
+                Span::raw(" D:"),
                 Span::styled(
-                    bar,
+                    dataset_bar,
                     Style::default().fg(colors.accent),
+                ),
+                Span::raw(" S:"),
+                Span::styled(
+                    snapshot_bar,
+                    Style::default().fg(colors.text),
                 ),
                 Span::styled(format!(
                     " {:>8} (D:{:>8} S:{:>8})",
-                    format_bytes(total_used),
+                    format_bytes(dataset_only + snapshot_used),
                     format_bytes(dataset_only),
                     format_bytes(snapshot_used),
                 ), Style::default().fg(colors.text)),

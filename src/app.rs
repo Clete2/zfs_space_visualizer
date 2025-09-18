@@ -54,7 +54,7 @@ impl Default for App {
             should_quit: false,
             current_view: AppView::PoolList,
             previous_view: None,
-            theme: Theme::Light, // Default to light theme for better solarized dark compatibility
+            theme: Theme::Dark, // Default to dark theme
             pools: Vec::new(),
             datasets: Vec::new(),
             snapshots: Vec::new(),
