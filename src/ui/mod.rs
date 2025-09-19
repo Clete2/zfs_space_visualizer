@@ -38,13 +38,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
     let colors = app.get_theme_colors();
 
-    // Find the maximum allocated space for relative scaling
-    let max_allocated = app.pools
-        .iter()
-        .map(|p| p.allocated)
-        .max()
-        .unwrap_or(1);
-
     let max_name_width = calculate_max_pool_name_width(&app.pools);
 
     let items: Vec<ListItem> = app
@@ -53,19 +46,13 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
         .enumerate()
         .map(|(i, pool)| {
             let usage_percent = if pool.size > 0 {
-                (pool.allocated as f64 / pool.size as f64 * 100.0) as u64
-            } else {
-                0
-            };
-
-            // Calculate relative percentage for bar scaling
-            let relative_percent = if max_allocated > 0 {
-                (pool.allocated as f64 / max_allocated as f64 * 100.0).min(100.0)
+                pool.allocated as f64 / pool.size as f64 * 100.0
             } else {
                 0.0
             };
 
-            let bar_chars = (BAR_WIDTH as f64 * relative_percent / 100.0) as usize;
+            // Use actual percentage for bar scaling (0-100%)
+            let bar_chars = (BAR_WIDTH as f64 * usage_percent / 100.0) as usize;
             let usage_bar = create_progress_bar(bar_chars, '█');
 
             let content = vec![Line::from(vec![
@@ -80,7 +67,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
                 ),
                 Span::styled(
                     format!(
-                        " {:>8} / {:>8} ({:>3}%) [{}]",
+                        " {:>8} / {:>8} ({:>3.0}%) [{}]",
                         format_bytes(pool.allocated),
                         format_bytes(pool.size),
                         usage_percent,
