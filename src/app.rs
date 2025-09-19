@@ -7,6 +7,8 @@ use ratatui::{
 
 use crate::zfs::{Pool, Dataset, Snapshot};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use tokio::task;
 
 #[derive(Debug, Clone)]
 pub enum AppView {
@@ -43,7 +45,8 @@ pub struct App {
     pub pools: Vec<Pool>,
     pub datasets: Vec<Dataset>,
     pub snapshots: Vec<Snapshot>,
-    pub snapshot_cache: HashMap<String, Vec<Snapshot>>, // Cache snapshots by dataset name
+    pub snapshot_cache: Arc<Mutex<HashMap<String, Vec<Snapshot>>>>, // Cache snapshots by dataset name
+    pub prefetch_complete: Arc<AtomicBool>, // Track if background prefetch is done
     pub selected_pool_index: usize,
     pub selected_dataset_index: usize,
     pub selected_snapshot_index: usize,
@@ -64,7 +67,8 @@ impl Default for App {
             pools: Vec::new(),
             datasets: Vec::new(),
             snapshots: Vec::new(),
-            snapshot_cache: HashMap::new(),
+            snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+            prefetch_complete: Arc::new(AtomicBool::new(false)),
             selected_pool_index: 0,
             selected_dataset_index: 0,
             selected_snapshot_index: 0,
@@ -229,43 +233,53 @@ impl App {
     async fn load_pools(&mut self) -> Result<()> {
         self.pools = crate::zfs::get_pools().await?;
 
-        // Start background prefetch of all snapshots
-        self.prefetch_all_snapshots().await?;
+        // Start background prefetch of all snapshots (non-blocking)
+        self.start_background_prefetch();
 
         Ok(())
     }
 
-    async fn prefetch_all_snapshots(&mut self) -> Result<()> {
-        // Get all datasets from all pools to prefetch their snapshots
-        let mut all_datasets = Vec::new();
+    fn start_background_prefetch(&mut self) {
+        let pools = self.pools.clone();
+        let cache = Arc::clone(&self.snapshot_cache);
+        let prefetch_complete = Arc::clone(&self.prefetch_complete);
 
-        for pool in &self.pools {
-            match crate::zfs::get_datasets(&pool.name).await {
-                Ok(datasets) => {
-                    all_datasets.extend(datasets);
-                }
-                Err(_) => {
-                    // Continue with other pools if one fails
-                    continue;
+        task::spawn(async move {
+            // Get all datasets from all pools
+            let mut all_datasets = Vec::new();
+
+            for pool in &pools {
+                match crate::zfs::get_datasets(&pool.name).await {
+                    Ok(datasets) => {
+                        all_datasets.extend(datasets);
+                    }
+                    Err(_) => {
+                        // Continue with other pools if one fails
+                        continue;
+                    }
                 }
             }
-        }
 
-        // Prefetch snapshots for each dataset
-        for dataset in &all_datasets {
-            match crate::zfs::get_snapshots(&dataset.name).await {
-                Ok(snapshots) => {
-                    self.snapshot_cache.insert(dataset.name.clone(), snapshots);
-                }
-                Err(_) => {
-                    // Continue with other datasets if one fails
-                    continue;
+            // Prefetch snapshots for each dataset
+            for dataset in &all_datasets {
+                match crate::zfs::get_snapshots(&dataset.name).await {
+                    Ok(snapshots) => {
+                        if let Ok(mut cache_lock) = cache.lock() {
+                            cache_lock.insert(dataset.name.clone(), snapshots);
+                        }
+                    }
+                    Err(_) => {
+                        // Continue with other datasets if one fails
+                        continue;
+                    }
                 }
             }
-        }
 
-        Ok(())
+            // Signal completion
+            prefetch_complete.store(true, Ordering::Relaxed);
+        });
     }
+
 
     async fn load_datasets(&mut self, pool_name: &str) -> Result<()> {
         self.datasets = crate::zfs::get_datasets(pool_name).await?;
@@ -277,13 +291,23 @@ impl App {
 
     async fn load_snapshots(&mut self, dataset_name: &str) -> Result<()> {
         // Try to get snapshots from cache first
-        if let Some(cached_snapshots) = self.snapshot_cache.get(dataset_name) {
-            self.snapshots = cached_snapshots.clone();
+        let cached_snapshots = {
+            if let Ok(cache_lock) = self.snapshot_cache.lock() {
+                cache_lock.get(dataset_name).cloned()
+            } else {
+                None
+            }
+        };
+
+        if let Some(snapshots) = cached_snapshots {
+            self.snapshots = snapshots;
         } else {
             // Fall back to fetching if not in cache
             self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
             // Cache the result for future use
-            self.snapshot_cache.insert(dataset_name.to_string(), self.snapshots.clone());
+            if let Ok(mut cache_lock) = self.snapshot_cache.lock() {
+                cache_lock.insert(dataset_name.to_string(), self.snapshots.clone());
+            }
         }
 
         self.sort_snapshots();
@@ -444,6 +468,10 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub fn is_prefetch_complete(&self) -> bool {
+        self.prefetch_complete.load(Ordering::Relaxed)
     }
 }
 

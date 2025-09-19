@@ -368,21 +368,27 @@ fn draw_snapshot_detail(
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let colors = app.get_theme_colors();
+    let prefetch_status = if app.is_prefetch_complete() {
+        ""
+    } else {
+        " [Loading snapshots...]"
+    };
+
     let (status_text, help_text) = match &app.current_view {
         AppView::PoolList => (
-            "Pool List".to_string(),
+            format!("Pool List{}", prefetch_status),
             "↑/↓: Navigate | →/Enter: View Datasets | h: Help | q: Quit"
         ),
         AppView::DatasetView(pool_name) => (
-            format!("Datasets in {}", pool_name),
+            format!("Datasets in {}{}", pool_name, prefetch_status),
             "↑/↓: Navigate | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit"
         ),
         AppView::SnapshotDetail(_, dataset_name) => (
-            format!("Snapshots in {}", dataset_name),
+            format!("Snapshots in {}{}", dataset_name, prefetch_status),
             "↑/↓: Navigate | s: Sort | ←/Esc: Back | h: Help | q: Quit"
         ),
         AppView::Help => (
-            "Help & Settings".to_string(),
+            format!("Help & Settings{}", prefetch_status),
             "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit"
         ),
     };
