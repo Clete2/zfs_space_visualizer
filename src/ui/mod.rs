@@ -210,8 +210,6 @@ fn draw_snapshot_detail(
 ) {
     let colors = app.get_theme_colors();
 
-    let max_name_width = calculate_max_snapshot_name_width(&app.snapshots);
-
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.snapshots.len(), visible_height);
@@ -228,6 +226,18 @@ fn draw_snapshot_detail(
         .map(|s| s.referenced)
         .max()
         .unwrap_or(1);
+
+    // Calculate available width for names dynamically
+    // Total width minus bars, labels, spacing, and data display
+    // Format: "NAME U:[bar] R:[bar] USED_SIZE REF_SIZE CREATION"
+    // Fixed parts: " U:" (3) + bar (22) + " R:" (3) + bar (22) + " " (1) + used (8) + " " (1) + ref (8) + " " (1) + creation (~19) = ~88 chars
+    let fixed_width = 88;
+    let available_width = area.width as usize;
+    let name_width = if available_width > fixed_width {
+        (available_width - fixed_width).max(MIN_NAME_WIDTH)
+    } else {
+        MIN_NAME_WIDTH
+    };
 
     let items: Vec<ListItem> = app
         .snapshots
@@ -264,9 +274,12 @@ fn draw_snapshot_detail(
                 .last()
                 .unwrap_or(&snapshot.name);
 
+            // Truncate name with ellipsis if needed
+            let display_name = truncate_with_ellipsis(short_name, name_width);
+
             let content = vec![Line::from(vec![
                 Span::styled(
-                    format!("{:<width$}", short_name, width = max_name_width),
+                    format!("{:<width$}", display_name, width = name_width),
                     Style::default().fg(colors.selected),
                 ),
                 Span::raw(" U:"),
@@ -472,17 +485,6 @@ fn calculate_max_dataset_name_width(datasets: &[crate::zfs::Dataset], pool_name:
         .max(MIN_NAME_WIDTH)
 }
 
-fn calculate_max_snapshot_name_width(snapshots: &[crate::zfs::Snapshot]) -> usize {
-    snapshots
-        .iter()
-        .map(|s| {
-            let short_name = s.name.split('@').last().unwrap_or(&s.name);
-            short_name.len()
-        })
-        .max()
-        .unwrap_or(MIN_NAME_WIDTH)
-        .max(MIN_NAME_WIDTH)
-}
 
 fn create_progress_bar(filled_chars: usize, fill_char: char) -> String {
     let mut bar = String::with_capacity(BAR_WIDTH + 2);
@@ -520,4 +522,21 @@ fn get_snapshot_sort_indicator(sort_order: &SnapshotSortOrder) -> &'static str {
         SnapshotSortOrder::NameDesc => "Name ↓",
         SnapshotSortOrder::NameAsc => "Name ↑",
     }
+}
+
+fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
+    if text.len() <= max_width {
+        return text.to_string();
+    }
+
+    if max_width <= 3 {
+        return "...".chars().take(max_width).collect();
+    }
+
+    let half = (max_width - 3) / 2;
+    let start = &text[..half];
+    let end_start = text.len() - (max_width - 3 - half);
+    let end = &text[end_start..];
+
+    format!("{}...{}", start, end)
 }
