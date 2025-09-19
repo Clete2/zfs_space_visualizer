@@ -306,7 +306,7 @@ impl App {
             let cpu_count = std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(4);
-            let max_concurrent = cpu_count * 4;
+            let max_concurrent = cpu_count * 8;
             let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
 
             // Prefetch snapshots for each dataset in parallel
@@ -506,17 +506,19 @@ impl App {
                     // All items fit on screen, no scrolling needed
                     self.dataset_scroll_offset = 0;
                 } else {
+                    // Calculate the maximum possible scroll offset
+                    let max_scroll = total_items.saturating_sub(visible_height);
+
                     // Ensure selected item is visible
                     if self.selected_dataset_index < self.dataset_scroll_offset {
                         // Selected item is above visible area, scroll up
                         self.dataset_scroll_offset = self.selected_dataset_index;
                     } else if self.selected_dataset_index >= self.dataset_scroll_offset + visible_height {
-                        // Selected item is below visible area, scroll down
-                        self.dataset_scroll_offset = self.selected_dataset_index.saturating_sub(visible_height - 1);
+                        // Selected item is below visible area, scroll down to show it
+                        self.dataset_scroll_offset = (self.selected_dataset_index + 1).saturating_sub(visible_height);
                     }
 
                     // Ensure we don't scroll past the end
-                    let max_scroll = total_items.saturating_sub(visible_height);
                     self.dataset_scroll_offset = self.dataset_scroll_offset.min(max_scroll);
                 }
             }
@@ -526,17 +528,19 @@ impl App {
                     // All items fit on screen, no scrolling needed
                     self.snapshot_scroll_offset = 0;
                 } else {
+                    // Calculate the maximum possible scroll offset
+                    let max_scroll = total_items.saturating_sub(visible_height);
+
                     // Ensure selected item is visible
                     if self.selected_snapshot_index < self.snapshot_scroll_offset {
                         // Selected item is above visible area, scroll up
                         self.snapshot_scroll_offset = self.selected_snapshot_index;
                     } else if self.selected_snapshot_index >= self.snapshot_scroll_offset + visible_height {
-                        // Selected item is below visible area, scroll down
-                        self.snapshot_scroll_offset = self.selected_snapshot_index.saturating_sub(visible_height - 1);
+                        // Selected item is below visible area, scroll down to show it
+                        self.snapshot_scroll_offset = (self.selected_snapshot_index + 1).saturating_sub(visible_height);
                     }
 
                     // Ensure we don't scroll past the end
-                    let max_scroll = total_items.saturating_sub(visible_height);
                     self.snapshot_scroll_offset = self.snapshot_scroll_offset.min(max_scroll);
                 }
             }

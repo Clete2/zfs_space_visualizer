@@ -107,14 +107,13 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.datasets.len(), visible_height);
 
-    // Find maximum values in the visible range for relative scaling
-    let visible_datasets: Vec<_> = app.datasets.iter().skip(start).take(end - start).collect();
-    let max_dataset_size = visible_datasets
+    // Find maximum values from all datasets for consistent scaling
+    let max_dataset_size = app.datasets
         .iter()
         .map(|d| d.referenced)
         .max()
         .unwrap_or(1);
-    let max_snapshot_size = visible_datasets
+    let max_snapshot_size = app.datasets
         .iter()
         .map(|d| d.snapshot_used)
         .max()
@@ -214,14 +213,13 @@ fn draw_snapshot_detail(
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.snapshots.len(), visible_height);
 
-    // Find maximum values in the visible range for relative scaling
-    let visible_snapshots: Vec<_> = app.snapshots.iter().skip(start).take(end - start).collect();
-    let max_used_size = visible_snapshots
+    // Find maximum values from all snapshots for consistent scaling
+    let max_used_size = app.snapshots
         .iter()
         .map(|s| s.used)
         .max()
         .unwrap_or(1);
-    let max_referenced_size = visible_snapshots
+    let max_referenced_size = app.snapshots
         .iter()
         .map(|s| s.referenced)
         .max()
