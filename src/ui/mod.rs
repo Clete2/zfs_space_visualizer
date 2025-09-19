@@ -2,38 +2,36 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, List, ListItem, Paragraph, Wrap,
-    },
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
 use crate::{
-    app::{App, AppView, Theme},
+    app::{App, AppView, DatasetSortOrder, SnapshotSortOrder, Theme},
     zfs::format_bytes,
 };
+
+const MIN_NAME_WIDTH: usize = 20;
+const BAR_WIDTH: usize = 20;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
         .split(f.area());
 
-    // Update scrolling for current view
     let visible_height = chunks[0].height.saturating_sub(2) as usize;
     app.update_scroll(visible_height);
 
-    // Main content area
-    match &app.current_view.clone() {
+    match &app.current_view {
         AppView::PoolList => draw_pool_list(f, chunks[0], app),
-        AppView::DatasetView(pool_name) => draw_dataset_view(f, chunks[0], app, &pool_name.clone()),
+        AppView::DatasetView(pool_name) => draw_dataset_view(f, chunks[0], app, pool_name),
         AppView::SnapshotDetail(pool_name, dataset_name) => {
-            draw_snapshot_detail(f, chunks[0], app, &pool_name.clone(), &dataset_name.clone())
+            draw_snapshot_detail(f, chunks[0], app, pool_name, dataset_name)
         }
         AppView::Help => draw_help_screen(f, chunks[0], app),
     }
 
-    // Status bar
     draw_status_bar(f, chunks[1], app);
 }
 
@@ -98,18 +96,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
         .map(|p| p.usable_size)
         .unwrap_or(1); // Default to 1 to avoid division by zero
 
-    // Calculate fixed width for dataset names
-    let max_name_width = app.datasets
-        .iter()
-        .map(|d| {
-            let short_name = d.name.strip_prefix(pool_name)
-                .unwrap_or(&d.name)
-                .trim_start_matches('/');
-            short_name.len()
-        })
-        .max()
-        .unwrap_or(20)
-        .max(20); // Minimum width of 20
+    let max_name_width = calculate_max_dataset_name_width(&app.datasets, pool_name);
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
@@ -130,34 +117,11 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
             let dataset_percent = (dataset_only as f64 / pool_usable_size as f64 * 100.0).min(100.0);
             let snapshot_percent = (snapshot_used as f64 / pool_usable_size as f64 * 100.0).min(100.0);
 
-            // Create separate bars
-            let bar_width = 20; // Smaller bars since we have two
-            let dataset_chars = (bar_width as f64 * dataset_percent / 100.0) as usize;
-            let snapshot_chars = (bar_width as f64 * snapshot_percent / 100.0) as usize;
+            let dataset_chars = (BAR_WIDTH as f64 * dataset_percent / 100.0) as usize;
+            let snapshot_chars = (BAR_WIDTH as f64 * snapshot_percent / 100.0) as usize;
 
-            // Dataset bar
-            let mut dataset_bar = String::new();
-            dataset_bar.push('[');
-            for j in 0..bar_width {
-                if j < dataset_chars {
-                    dataset_bar.push('█');
-                } else {
-                    dataset_bar.push(' ');
-                }
-            }
-            dataset_bar.push(']');
-
-            // Snapshot bar
-            let mut snapshot_bar = String::new();
-            snapshot_bar.push('[');
-            for j in 0..bar_width {
-                if j < snapshot_chars {
-                    snapshot_bar.push('▓');
-                } else {
-                    snapshot_bar.push(' ');
-                }
-            }
-            snapshot_bar.push(']');
+            let dataset_bar = create_progress_bar(dataset_chars, '█');
+            let snapshot_bar = create_progress_bar(snapshot_chars, '▓');
 
             let short_name = dataset.name.strip_prefix(pool_name)
                 .unwrap_or(&dataset.name)
@@ -194,17 +158,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
         })
         .collect();
 
-    // Sort indicator
-    let sort_indicator = match app.dataset_sort_order {
-        crate::app::DatasetSortOrder::TotalSizeDesc => "Total Size ↓",
-        crate::app::DatasetSortOrder::TotalSizeAsc => "Total Size ↑",
-        crate::app::DatasetSortOrder::DatasetSizeDesc => "Dataset Size ↓",
-        crate::app::DatasetSortOrder::DatasetSizeAsc => "Dataset Size ↑",
-        crate::app::DatasetSortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
-        crate::app::DatasetSortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
-        crate::app::DatasetSortOrder::NameDesc => "Name ↓",
-        crate::app::DatasetSortOrder::NameAsc => "Name ↑",
-    };
+    let sort_indicator = get_dataset_sort_indicator(&app.dataset_sort_order);
 
     let title = format!("Datasets in Pool: {} (Sort: {})", pool_name, sort_indicator);
 
@@ -240,19 +194,7 @@ fn draw_snapshot_detail(
             app.snapshots.iter().map(|s| s.used).sum::<u64>().max(1)
         });
 
-    // Calculate fixed width for snapshot names
-    let max_name_width = app.snapshots
-        .iter()
-        .map(|s| {
-            let short_name = s.name
-                .split('@')
-                .last()
-                .unwrap_or(&s.name);
-            short_name.len()
-        })
-        .max()
-        .unwrap_or(20)
-        .max(20); // Minimum width of 20
+    let max_name_width = calculate_max_snapshot_name_width(&app.snapshots);
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
@@ -273,34 +215,11 @@ fn draw_snapshot_detail(
             let used_percent = (snapshot_used as f64 / dataset_total_size as f64 * 100.0).min(100.0);
             let referenced_percent = (snapshot_referenced as f64 / dataset_total_size as f64 * 100.0).min(100.0);
 
-            // Create separate bars
-            let bar_width = 20; // Smaller bars since we have two
-            let used_chars = (bar_width as f64 * used_percent / 100.0) as usize;
-            let referenced_chars = (bar_width as f64 * referenced_percent / 100.0) as usize;
+            let used_chars = (BAR_WIDTH as f64 * used_percent / 100.0) as usize;
+            let referenced_chars = (BAR_WIDTH as f64 * referenced_percent / 100.0) as usize;
 
-            // Used space bar (snapshot size)
-            let mut used_bar = String::new();
-            used_bar.push('[');
-            for j in 0..bar_width {
-                if j < used_chars {
-                    used_bar.push('▓');
-                } else {
-                    used_bar.push(' ');
-                }
-            }
-            used_bar.push(']');
-
-            // Referenced space bar (actual data size)
-            let mut referenced_bar = String::new();
-            referenced_bar.push('[');
-            for j in 0..bar_width {
-                if j < referenced_chars {
-                    referenced_bar.push('█');
-                } else {
-                    referenced_bar.push(' ');
-                }
-            }
-            referenced_bar.push(']');
+            let used_bar = create_progress_bar(used_chars, '▓');
+            let referenced_bar = create_progress_bar(referenced_chars, '█');
 
             // Extract just the snapshot name (after the @)
             let short_name = snapshot.name
@@ -339,15 +258,7 @@ fn draw_snapshot_detail(
         })
         .collect();
 
-    // Sort indicator
-    let sort_indicator = match app.snapshot_sort_order {
-        crate::app::SnapshotSortOrder::UsedDesc => "Used Size ↓",
-        crate::app::SnapshotSortOrder::UsedAsc => "Used Size ↑",
-        crate::app::SnapshotSortOrder::ReferencedDesc => "Referenced Size ↓",
-        crate::app::SnapshotSortOrder::ReferencedAsc => "Referenced Size ↑",
-        crate::app::SnapshotSortOrder::NameDesc => "Name ↓",
-        crate::app::SnapshotSortOrder::NameAsc => "Name ↑",
-    };
+    let sort_indicator = get_snapshot_sort_indicator(&app.snapshot_sort_order);
 
     let title = format!("Snapshots in Dataset: {} (Sort: {})", dataset_name, sort_indicator);
 
@@ -493,4 +404,69 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
     f.render_widget(theme_list, chunks[1]);
+}
+
+fn calculate_max_dataset_name_width(datasets: &[crate::zfs::Dataset], pool_name: &str) -> usize {
+    datasets
+        .iter()
+        .map(|d| {
+            let short_name = d.name
+                .strip_prefix(pool_name)
+                .unwrap_or(&d.name)
+                .trim_start_matches('/');
+            short_name.len()
+        })
+        .max()
+        .unwrap_or(MIN_NAME_WIDTH)
+        .max(MIN_NAME_WIDTH)
+}
+
+fn calculate_max_snapshot_name_width(snapshots: &[crate::zfs::Snapshot]) -> usize {
+    snapshots
+        .iter()
+        .map(|s| {
+            let short_name = s.name.split('@').last().unwrap_or(&s.name);
+            short_name.len()
+        })
+        .max()
+        .unwrap_or(MIN_NAME_WIDTH)
+        .max(MIN_NAME_WIDTH)
+}
+
+fn create_progress_bar(filled_chars: usize, fill_char: char) -> String {
+    let mut bar = String::with_capacity(BAR_WIDTH + 2);
+    bar.push('[');
+    for i in 0..BAR_WIDTH {
+        if i < filled_chars {
+            bar.push(fill_char);
+        } else {
+            bar.push(' ');
+        }
+    }
+    bar.push(']');
+    bar
+}
+
+fn get_dataset_sort_indicator(sort_order: &DatasetSortOrder) -> &'static str {
+    match sort_order {
+        DatasetSortOrder::TotalSizeDesc => "Total Size ↓",
+        DatasetSortOrder::TotalSizeAsc => "Total Size ↑",
+        DatasetSortOrder::DatasetSizeDesc => "Dataset Size ↓",
+        DatasetSortOrder::DatasetSizeAsc => "Dataset Size ↑",
+        DatasetSortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
+        DatasetSortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
+        DatasetSortOrder::NameDesc => "Name ↓",
+        DatasetSortOrder::NameAsc => "Name ↑",
+    }
+}
+
+fn get_snapshot_sort_indicator(sort_order: &SnapshotSortOrder) -> &'static str {
+    match sort_order {
+        SnapshotSortOrder::UsedDesc => "Used Size ↓",
+        SnapshotSortOrder::UsedAsc => "Used Size ↑",
+        SnapshotSortOrder::ReferencedDesc => "Referenced Size ↓",
+        SnapshotSortOrder::ReferencedAsc => "Referenced Size ↑",
+        SnapshotSortOrder::NameDesc => "Name ↓",
+        SnapshotSortOrder::NameAsc => "Name ↑",
+    }
 }

@@ -8,40 +8,37 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use app::App;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Setup terminal
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+    }
+}
+
+fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    Ok(Terminal::new(backend)?)
+}
 
-    // Create app and run
+#[tokio::main]
+async fn main() -> Result<()> {
+    let _guard = TerminalGuard;
+    let mut terminal = setup_terminal()?;
+
     let mut app = App::new();
-    let res = app.run(&mut terminal).await;
+    let result = app.run(&mut terminal).await;
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
     terminal.show_cursor()?;
 
-    // Handle any errors
-    if let Err(err) = res {
-        println!("Error: {:?}", err);
-    }
-
-    Ok(())
+    result
 }

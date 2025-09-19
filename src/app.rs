@@ -1,14 +1,13 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use ratatui::{
-    backend::Backend,
-    Terminal,
+use ratatui::{backend::Backend, style::Color, Terminal};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}},
 };
+use tokio::task;
 
 use crate::zfs::{Pool, Dataset, Snapshot};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
-use tokio::task;
 
 #[derive(Debug, Clone)]
 pub enum AppView {
@@ -24,7 +23,7 @@ pub enum Theme {
     Light,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DatasetSortOrder {
     TotalSizeDesc,
     TotalSizeAsc,
@@ -36,7 +35,28 @@ pub enum DatasetSortOrder {
     NameAsc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl DatasetSortOrder {
+    const VALUES: [Self; 8] = [
+        Self::TotalSizeDesc, Self::TotalSizeAsc, Self::DatasetSizeDesc, Self::DatasetSizeAsc,
+        Self::SnapshotSizeDesc, Self::SnapshotSizeAsc, Self::NameDesc, Self::NameAsc,
+    ];
+
+    pub const fn next(self) -> Self {
+        let current_idx = match self {
+            Self::TotalSizeDesc => 0,
+            Self::TotalSizeAsc => 1,
+            Self::DatasetSizeDesc => 2,
+            Self::DatasetSizeAsc => 3,
+            Self::SnapshotSizeDesc => 4,
+            Self::SnapshotSizeAsc => 5,
+            Self::NameDesc => 6,
+            Self::NameAsc => 7,
+        };
+        Self::VALUES[(current_idx + 1) % Self::VALUES.len()]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SnapshotSortOrder {
     UsedDesc,
     UsedAsc,
@@ -44,6 +64,25 @@ pub enum SnapshotSortOrder {
     ReferencedAsc,
     NameDesc,
     NameAsc,
+}
+
+impl SnapshotSortOrder {
+    const VALUES: [Self; 6] = [
+        Self::UsedDesc, Self::UsedAsc, Self::ReferencedDesc,
+        Self::ReferencedAsc, Self::NameDesc, Self::NameAsc,
+    ];
+
+    pub const fn next(self) -> Self {
+        let current_idx = match self {
+            Self::UsedDesc => 0,
+            Self::UsedAsc => 1,
+            Self::ReferencedDesc => 2,
+            Self::ReferencedAsc => 3,
+            Self::NameDesc => 4,
+            Self::NameAsc => 5,
+        };
+        Self::VALUES[(current_idx + 1) % Self::VALUES.len()]
+    }
 }
 
 #[derive(Debug)]
@@ -145,48 +184,26 @@ impl App {
     }
 
     fn previous_item(&mut self) {
-        match self.current_view {
-            AppView::PoolList => {
-                if self.selected_pool_index > 0 {
-                    self.selected_pool_index -= 1;
-                }
-            }
-            AppView::DatasetView(_) => {
-                if self.selected_dataset_index > 0 {
-                    self.selected_dataset_index -= 1;
-                }
-            }
-            AppView::SnapshotDetail(_, _) => {
-                if self.selected_snapshot_index > 0 {
-                    self.selected_snapshot_index -= 1;
-                }
-            }
-            AppView::Help => {
-                // Navigation handled by theme methods
-            }
+        match &self.current_view {
+            AppView::PoolList => self.selected_pool_index = self.selected_pool_index.saturating_sub(1),
+            AppView::DatasetView(_) => self.selected_dataset_index = self.selected_dataset_index.saturating_sub(1),
+            AppView::SnapshotDetail(_, _) => self.selected_snapshot_index = self.selected_snapshot_index.saturating_sub(1),
+            AppView::Help => {}
         }
     }
 
     fn next_item(&mut self) {
-        match self.current_view {
+        match &self.current_view {
             AppView::PoolList => {
-                if self.selected_pool_index < self.pools.len().saturating_sub(1) {
-                    self.selected_pool_index += 1;
-                }
+                self.selected_pool_index = (self.selected_pool_index + 1).min(self.pools.len().saturating_sub(1));
             }
             AppView::DatasetView(_) => {
-                if self.selected_dataset_index < self.datasets.len().saturating_sub(1) {
-                    self.selected_dataset_index += 1;
-                }
+                self.selected_dataset_index = (self.selected_dataset_index + 1).min(self.datasets.len().saturating_sub(1));
             }
             AppView::SnapshotDetail(_, _) => {
-                if self.selected_snapshot_index < self.snapshots.len().saturating_sub(1) {
-                    self.selected_snapshot_index += 1;
-                }
+                self.selected_snapshot_index = (self.selected_snapshot_index + 1).min(self.snapshots.len().saturating_sub(1));
             }
-            AppView::Help => {
-                // Navigation handled by theme methods
-            }
+            AppView::Help => {}
         }
     }
 
@@ -294,36 +311,35 @@ impl App {
     async fn load_datasets(&mut self, pool_name: &str) -> Result<()> {
         self.datasets = crate::zfs::get_datasets(pool_name).await?;
         self.sort_datasets();
-        self.selected_dataset_index = 0;
-        self.dataset_scroll_offset = 0;
+        self.reset_dataset_selection();
         Ok(())
     }
 
     async fn load_snapshots(&mut self, dataset_name: &str) -> Result<()> {
-        // Try to get snapshots from cache first
-        let cached_snapshots = {
-            if let Ok(cache_lock) = self.snapshot_cache.lock() {
-                cache_lock.get(dataset_name).cloned()
-            } else {
-                None
-            }
-        };
+        self.snapshots = self.get_cached_snapshots(dataset_name).unwrap_or_default();
 
-        if let Some(snapshots) = cached_snapshots {
-            self.snapshots = snapshots;
-        } else {
-            // Fall back to fetching if not in cache
+        if self.snapshots.is_empty() {
             self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
-            // Cache the result for future use
-            if let Ok(mut cache_lock) = self.snapshot_cache.lock() {
-                cache_lock.insert(dataset_name.to_string(), self.snapshots.clone());
-            }
+            self.cache_snapshots(dataset_name);
         }
 
         self.sort_snapshots();
-        self.selected_snapshot_index = 0;
-        self.snapshot_scroll_offset = 0;
+        self.reset_snapshot_selection();
         Ok(())
+    }
+
+    fn get_cached_snapshots(&self, dataset_name: &str) -> Option<Vec<Snapshot>> {
+        self.snapshot_cache
+            .lock()
+            .ok()?
+            .get(dataset_name)
+            .cloned()
+    }
+
+    fn cache_snapshots(&self, dataset_name: &str) {
+        if let Ok(mut cache_lock) = self.snapshot_cache.lock() {
+            cache_lock.insert(dataset_name.to_string(), self.snapshots.clone());
+        }
     }
 
     fn show_help(&mut self) {
@@ -355,25 +371,25 @@ impl App {
         };
     }
 
-    pub fn get_theme_colors(&self) -> ThemeColors {
+    pub const fn get_theme_colors(&self) -> ThemeColors {
         match self.theme {
             Theme::Dark => ThemeColors {
-                background: ratatui::style::Color::Black,
-                text: ratatui::style::Color::White,
-                accent: ratatui::style::Color::Cyan,
-                highlight: ratatui::style::Color::Blue,
-                border: ratatui::style::Color::Gray,
-                selected: ratatui::style::Color::Yellow,
-                warning: ratatui::style::Color::Red,
+                background: Color::Black,
+                text: Color::White,
+                accent: Color::Cyan,
+                highlight: Color::Blue,
+                border: Color::Gray,
+                selected: Color::Yellow,
+                warning: Color::Red,
             },
             Theme::Light => ThemeColors {
-                background: ratatui::style::Color::White,
-                text: ratatui::style::Color::Black,
-                accent: ratatui::style::Color::Blue,
-                highlight: ratatui::style::Color::LightBlue,
-                border: ratatui::style::Color::DarkGray,
-                selected: ratatui::style::Color::Magenta,
-                warning: ratatui::style::Color::Red,
+                background: Color::White,
+                text: Color::Black,
+                accent: Color::Blue,
+                highlight: Color::LightBlue,
+                border: Color::DarkGray,
+                selected: Color::Magenta,
+                warning: Color::Red,
             },
         }
     }
@@ -381,35 +397,27 @@ impl App {
     fn toggle_sort(&mut self) {
         match &self.current_view {
             AppView::DatasetView(_) => {
-                self.dataset_sort_order = match self.dataset_sort_order {
-                    DatasetSortOrder::TotalSizeDesc => DatasetSortOrder::TotalSizeAsc,
-                    DatasetSortOrder::TotalSizeAsc => DatasetSortOrder::DatasetSizeDesc,
-                    DatasetSortOrder::DatasetSizeDesc => DatasetSortOrder::DatasetSizeAsc,
-                    DatasetSortOrder::DatasetSizeAsc => DatasetSortOrder::SnapshotSizeDesc,
-                    DatasetSortOrder::SnapshotSizeDesc => DatasetSortOrder::SnapshotSizeAsc,
-                    DatasetSortOrder::SnapshotSizeAsc => DatasetSortOrder::NameDesc,
-                    DatasetSortOrder::NameDesc => DatasetSortOrder::NameAsc,
-                    DatasetSortOrder::NameAsc => DatasetSortOrder::TotalSizeDesc,
-                };
+                self.dataset_sort_order = self.dataset_sort_order.clone().next();
                 self.sort_datasets();
-                self.selected_dataset_index = 0;
-                self.dataset_scroll_offset = 0;
+                self.reset_dataset_selection();
             }
             AppView::SnapshotDetail(_, _) => {
-                self.snapshot_sort_order = match self.snapshot_sort_order {
-                    SnapshotSortOrder::UsedDesc => SnapshotSortOrder::UsedAsc,
-                    SnapshotSortOrder::UsedAsc => SnapshotSortOrder::ReferencedDesc,
-                    SnapshotSortOrder::ReferencedDesc => SnapshotSortOrder::ReferencedAsc,
-                    SnapshotSortOrder::ReferencedAsc => SnapshotSortOrder::NameDesc,
-                    SnapshotSortOrder::NameDesc => SnapshotSortOrder::NameAsc,
-                    SnapshotSortOrder::NameAsc => SnapshotSortOrder::UsedDesc,
-                };
+                self.snapshot_sort_order = self.snapshot_sort_order.clone().next();
                 self.sort_snapshots();
-                self.selected_snapshot_index = 0;
-                self.snapshot_scroll_offset = 0;
+                self.reset_snapshot_selection();
             }
-            _ => {} // No sorting for pool list or help
+            _ => {}
         }
+    }
+
+    fn reset_dataset_selection(&mut self) {
+        self.selected_dataset_index = 0;
+        self.dataset_scroll_offset = 0;
+    }
+
+    fn reset_snapshot_selection(&mut self) {
+        self.selected_snapshot_index = 0;
+        self.snapshot_scroll_offset = 0;
     }
 
     fn sort_datasets(&mut self) {
@@ -481,13 +489,13 @@ impl App {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ThemeColors {
-    pub background: ratatui::style::Color,
-    pub text: ratatui::style::Color,
-    pub accent: ratatui::style::Color,
-    pub highlight: ratatui::style::Color,
-    pub border: ratatui::style::Color,
-    pub selected: ratatui::style::Color,
-    pub warning: ratatui::style::Color,
+    pub background: Color,
+    pub text: Color,
+    pub accent: Color,
+    pub highlight: Color,
+    pub border: Color,
+    pub selected: Color,
+    pub warning: Color,
 }

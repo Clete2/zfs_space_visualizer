@@ -1,5 +1,6 @@
-use anyhow::{anyhow, Result};
-use tokio::process::Command as TokioCommand;
+use anyhow::{anyhow, Context, Result};
+use std::str;
+use tokio::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct Pool {
@@ -29,62 +30,58 @@ pub struct Snapshot {
 }
 
 pub async fn get_pools() -> Result<Vec<Pool>> {
-    let output = TokioCommand::new("zpool")
-        .args(&["list", "-H", "-p"])
-        .output()
-        .await?;
+    let output = execute_command("zpool", &["list", "-H", "-p"])
+        .await
+        .context("Failed to list ZFS pools")?;
 
-    if !output.status.success() {
-        return Err(anyhow!("Failed to execute zpool list: {}",
-            String::from_utf8_lossy(&output.stderr)));
-    }
-
-    let stdout = String::from_utf8(output.stdout)?;
     let mut pools = Vec::new();
-
-    for line in stdout.lines() {
+    for line in output.lines() {
         if line.trim().is_empty() {
             continue;
         }
-
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() >= 7 {
-            let pool_name = fields[0].to_string();
-            let usable_size = get_pool_usable_size(&pool_name).await.unwrap_or(fields[1].parse().unwrap_or(0));
-
-            pools.push(Pool {
-                name: pool_name,
-                size: fields[1].parse().unwrap_or(0),
-                allocated: fields[2].parse().unwrap_or(0),
-                free: fields[3].parse().unwrap_or(0),
-                health: fields[9].to_string(),
-                usable_size,
-            });
+        if let Some(pool_result) = parse_pool_line(line).await {
+            pools.push(pool_result?);
         }
     }
-
     Ok(pools)
 }
 
-async fn get_pool_usable_size(pool_name: &str) -> Result<u64> {
-    let output = TokioCommand::new("zfs")
-        .args(&["list", "-H", "-p", "-o", "used,avail", pool_name])
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Failed to execute zfs list for pool {}: {}",
-            pool_name, String::from_utf8_lossy(&output.stderr)));
+async fn parse_pool_line(line: &str) -> Option<Result<Pool>> {
+    let fields: Vec<&str> = line.split('\t').collect();
+    if fields.len() < 7 {
+        return None;
     }
 
-    let stdout = String::from_utf8(output.stdout)?;
-    let line = stdout.lines().next().ok_or_else(|| anyhow!("No output from zfs list"))?;
+    let pool_name = fields[0];
+    let usable_size = get_pool_usable_size(pool_name)
+        .await
+        .unwrap_or_else(|_| parse_u64(fields[1]));
+
+    Some(Ok(Pool {
+        name: pool_name.to_owned(),
+        size: parse_u64(fields[1]),
+        allocated: parse_u64(fields[2]),
+        free: parse_u64(fields[3]),
+        health: fields[9].to_owned(),
+        usable_size,
+    }))
+}
+
+async fn get_pool_usable_size(pool_name: &str) -> Result<u64> {
+    let output = execute_command("zfs", &["list", "-H", "-p", "-o", "used,avail", pool_name])
+        .await
+        .with_context(|| format!("Failed to get usable size for pool {}", pool_name))?;
+
+    let line = output
+        .lines()
+        .next()
+        .ok_or_else(|| anyhow!("No output from zfs list"))?;
 
     let fields: Vec<&str> = line.split('\t').collect();
     if fields.len() >= 2 {
-        let used: u64 = fields[0].parse().unwrap_or(0);
-        let avail: u64 = fields[1].parse().unwrap_or(0);
-        Ok(used + avail) // Total usable space = used + available
+        let used = parse_u64(fields[0]);
+        let avail = parse_u64(fields[1]);
+        Ok(used + avail)
     } else {
         Err(anyhow!("Invalid zfs list output format"))
     }
@@ -92,81 +89,100 @@ async fn get_pool_usable_size(pool_name: &str) -> Result<u64> {
 
 
 pub async fn get_datasets(pool_name: &str) -> Result<Vec<Dataset>> {
-    let output = TokioCommand::new("zfs")
-        .args(&["list", "-H", "-p", "-r", "-o", "name,used,avail,refer,usedbysnapshots", pool_name])
-        .output()
-        .await?;
+    let output = execute_command(
+        "zfs",
+        &["list", "-H", "-p", "-r", "-o", "name,used,avail,refer,usedbysnapshots", pool_name],
+    )
+    .await
+    .with_context(|| format!("Failed to list datasets for pool {}", pool_name))?;
 
-    if !output.status.success() {
-        return Err(anyhow!("Failed to execute zfs list: {}",
-            String::from_utf8_lossy(&output.stderr)));
+    Ok(output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(parse_dataset_line)
+        .collect())
+}
+
+fn parse_dataset_line(line: &str) -> Option<Dataset> {
+    let fields: Vec<&str> = line.split('\t').collect();
+    if fields.len() >= 5 {
+        Some(Dataset {
+            name: fields[0].to_owned(),
+            used: parse_u64(fields[1]),
+            available: parse_u64(fields[2]),
+            referenced: parse_u64(fields[3]),
+            snapshot_used: parse_u64(fields[4]),
+        })
+    } else {
+        None
     }
-
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut datasets = Vec::new();
-
-    for line in stdout.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() >= 5 {
-            datasets.push(Dataset {
-                name: fields[0].to_string(),
-                used: fields[1].parse().unwrap_or(0),
-                available: fields[2].parse().unwrap_or(0),
-                referenced: fields[3].parse().unwrap_or(0),
-                snapshot_used: fields[4].parse().unwrap_or(0),
-            });
-        }
-    }
-
-    Ok(datasets)
 }
 
 
 pub async fn get_snapshots(dataset_name: &str) -> Result<Vec<Snapshot>> {
-    let output = TokioCommand::new("zfs")
-        .args(&["list", "-H", "-p", "-t", "snap", "-r", "-o", "name,used,refer,creation", dataset_name])
+    let output = execute_command(
+        "zfs",
+        &["list", "-H", "-p", "-t", "snap", "-r", "-o", "name,used,refer,creation", dataset_name],
+    )
+    .await
+    .with_context(|| format!("Failed to list snapshots for dataset {}", dataset_name))?;
+
+    Ok(output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(parse_snapshot_line)
+        .collect())
+}
+
+fn parse_snapshot_line(line: &str) -> Option<Snapshot> {
+    let fields: Vec<&str> = line.split('\t').collect();
+    if fields.len() >= 4 {
+        Some(Snapshot {
+            name: fields[0].to_owned(),
+            used: parse_u64(fields[1]),
+            referenced: parse_u64(fields[2]),
+            creation: fields[3].to_owned(),
+        })
+    } else {
+        None
+    }
+}
+
+async fn execute_command(command: &str, args: &[&str]) -> Result<String> {
+    let output = Command::new(command)
+        .args(args)
         .output()
-        .await?;
+        .await
+        .with_context(|| format!("Failed to execute command: {} {}", command, args.join(" ")))?;
 
     if !output.status.success() {
-        return Err(anyhow!("Failed to execute zfs list for snapshots: {}",
-            String::from_utf8_lossy(&output.stderr)));
+        return Err(anyhow!(
+            "Command failed: {} {}\nStderr: {}",
+            command,
+            args.join(" "),
+            str::from_utf8(&output.stderr).unwrap_or("<invalid UTF-8>")
+        ));
     }
 
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut snapshots = Vec::new();
+    str::from_utf8(&output.stdout)
+        .context("Command output is not valid UTF-8")
+        .map(|s| s.to_owned())
+}
 
-    for line in stdout.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() >= 4 {
-            snapshots.push(Snapshot {
-                name: fields[0].to_string(),
-                used: fields[1].parse().unwrap_or(0),
-                referenced: fields[2].parse().unwrap_or(0),
-                creation: fields[3].to_string(),
-            });
-        }
-    }
-
-    Ok(snapshots)
+fn parse_u64(s: &str) -> u64 {
+    s.parse().unwrap_or(0)
 }
 
 
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "K", "M", "G", "T", "P"];
+    const THRESHOLD: f64 = 1024.0;
+
     let mut size = bytes as f64;
     let mut unit_index = 0;
 
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
+    while size >= THRESHOLD && unit_index < UNITS.len() - 1 {
+        size /= THRESHOLD;
         unit_index += 1;
     }
 
