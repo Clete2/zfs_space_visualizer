@@ -1,5 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use futures::future;
 use ratatui::{backend::Backend, style::Color, Terminal};
 use std::{
     collections::HashMap,
@@ -287,20 +288,43 @@ impl App {
                 }
             }
 
-            // Prefetch snapshots for each dataset
-            for dataset in &all_datasets {
-                match crate::zfs::get_snapshots(&dataset.name).await {
-                    Ok(snapshots) => {
-                        if let Ok(mut cache_lock) = cache.lock() {
-                            cache_lock.insert(dataset.name.clone(), snapshots);
+            // Create semaphore to limit concurrent snapshot fetches
+            // Default to 4x CPU count for optimal I/O concurrency
+            let cpu_count = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4);
+            let max_concurrent = cpu_count * 4;
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+
+            // Prefetch snapshots for each dataset in parallel
+            let tasks: Vec<_> = all_datasets
+                .into_iter()
+                .map(|dataset| {
+                    let cache = Arc::clone(&cache);
+                    let sem = Arc::clone(&semaphore);
+
+                    task::spawn(async move {
+                        // Acquire semaphore permit to limit concurrency
+                        let _permit = sem.acquire().await.ok()?;
+
+                        match crate::zfs::get_snapshots(&dataset.name).await {
+                            Ok(snapshots) => {
+                                if let Ok(mut cache_lock) = cache.lock() {
+                                    cache_lock.insert(dataset.name.clone(), snapshots);
+                                }
+                                Some(())
+                            }
+                            Err(_) => {
+                                // Continue with other datasets if one fails
+                                None
+                            }
                         }
-                    }
-                    Err(_) => {
-                        // Continue with other datasets if one fails
-                        continue;
-                    }
-                }
-            }
+                    })
+                })
+                .collect();
+
+            // Wait for all snapshot fetches to complete
+            future::join_all(tasks).await;
 
             // Signal completion
             prefetch_complete.store(true, Ordering::Relaxed);
