@@ -63,7 +63,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
                 Span::raw(" "),
                 Span::styled(
                     usage_bar,
-                    Style::default().fg(colors.selected),
+                    Style::default().fg(colors.accent),
                 ),
                 Span::styled(
                     format!(
