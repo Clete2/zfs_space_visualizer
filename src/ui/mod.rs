@@ -196,14 +196,14 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
 
     // Sort indicator
     let sort_indicator = match app.dataset_sort_order {
-        crate::app::SortOrder::TotalSizeDesc => "Total Size ↓",
-        crate::app::SortOrder::TotalSizeAsc => "Total Size ↑",
-        crate::app::SortOrder::DatasetSizeDesc => "Dataset Size ↓",
-        crate::app::SortOrder::DatasetSizeAsc => "Dataset Size ↑",
-        crate::app::SortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
-        crate::app::SortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
-        crate::app::SortOrder::NameDesc => "Name ↓",
-        crate::app::SortOrder::NameAsc => "Name ↑",
+        crate::app::DatasetSortOrder::TotalSizeDesc => "Total Size ↓",
+        crate::app::DatasetSortOrder::TotalSizeAsc => "Total Size ↑",
+        crate::app::DatasetSortOrder::DatasetSizeDesc => "Dataset Size ↓",
+        crate::app::DatasetSortOrder::DatasetSizeAsc => "Dataset Size ↑",
+        crate::app::DatasetSortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
+        crate::app::DatasetSortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
+        crate::app::DatasetSortOrder::NameDesc => "Name ↓",
+        crate::app::DatasetSortOrder::NameAsc => "Name ↑",
     };
 
     let title = format!("Datasets in Pool: {} (Sort: {})", pool_name, sort_indicator);
@@ -341,14 +341,12 @@ fn draw_snapshot_detail(
 
     // Sort indicator
     let sort_indicator = match app.snapshot_sort_order {
-        crate::app::SortOrder::TotalSizeDesc => "Total Size ↓",
-        crate::app::SortOrder::TotalSizeAsc => "Total Size ↑",
-        crate::app::SortOrder::DatasetSizeDesc => "Dataset Size ↓",
-        crate::app::SortOrder::DatasetSizeAsc => "Dataset Size ↑",
-        crate::app::SortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
-        crate::app::SortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
-        crate::app::SortOrder::NameDesc => "Name ↓",
-        crate::app::SortOrder::NameAsc => "Name ↑",
+        crate::app::SnapshotSortOrder::UsedDesc => "Used Size ↓",
+        crate::app::SnapshotSortOrder::UsedAsc => "Used Size ↑",
+        crate::app::SnapshotSortOrder::ReferencedDesc => "Referenced Size ↓",
+        crate::app::SnapshotSortOrder::ReferencedAsc => "Referenced Size ↑",
+        crate::app::SnapshotSortOrder::NameDesc => "Name ↓",
+        crate::app::SnapshotSortOrder::NameAsc => "Name ↑",
     };
 
     let title = format!("Snapshots in Dataset: {} (Sort: {})", dataset_name, sort_indicator);
