@@ -97,6 +97,8 @@ pub struct App {
     pub snapshots: Vec<Snapshot>,
     pub snapshot_cache: Arc<Mutex<HashMap<String, Vec<Snapshot>>>>, // Cache snapshots by dataset name
     pub prefetch_complete: Arc<AtomicBool>, // Track if background prefetch is done
+    pub prefetch_total: Arc<std::sync::atomic::AtomicUsize>, // Total datasets to process
+    pub prefetch_completed: Arc<std::sync::atomic::AtomicUsize>, // Completed datasets
     pub selected_pool_index: usize,
     pub selected_dataset_index: usize,
     pub selected_snapshot_index: usize,
@@ -119,6 +121,8 @@ impl Default for App {
             snapshots: Vec::new(),
             snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
             prefetch_complete: Arc::new(AtomicBool::new(false)),
+            prefetch_total: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            prefetch_completed: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             selected_pool_index: 0,
             selected_dataset_index: 0,
             selected_snapshot_index: 0,
@@ -271,6 +275,8 @@ impl App {
         let pools = self.pools.clone();
         let cache = Arc::clone(&self.snapshot_cache);
         let prefetch_complete = Arc::clone(&self.prefetch_complete);
+        let prefetch_total = Arc::clone(&self.prefetch_total);
+        let prefetch_completed = Arc::clone(&self.prefetch_completed);
 
         task::spawn(async move {
             // Get all datasets from all pools
@@ -288,6 +294,10 @@ impl App {
                 }
             }
 
+            // Set total count for progress tracking
+            prefetch_total.store(all_datasets.len(), std::sync::atomic::Ordering::Relaxed);
+            prefetch_completed.store(0, std::sync::atomic::Ordering::Relaxed);
+
             // Create semaphore to limit concurrent snapshot fetches
             // Default to 4x CPU count for optimal I/O concurrency
             let cpu_count = std::thread::available_parallelism()
@@ -302,12 +312,13 @@ impl App {
                 .map(|dataset| {
                     let cache = Arc::clone(&cache);
                     let sem = Arc::clone(&semaphore);
+                    let completed = Arc::clone(&prefetch_completed);
 
                     task::spawn(async move {
                         // Acquire semaphore permit to limit concurrency
                         let _permit = sem.acquire().await.ok()?;
 
-                        match crate::zfs::get_snapshots(&dataset.name).await {
+                        let result = match crate::zfs::get_snapshots(&dataset.name).await {
                             Ok(snapshots) => {
                                 if let Ok(mut cache_lock) = cache.lock() {
                                     cache_lock.insert(dataset.name.clone(), snapshots);
@@ -318,7 +329,11 @@ impl App {
                                 // Continue with other datasets if one fails
                                 None
                             }
-                        }
+                        };
+
+                        // Increment completed count
+                        completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        result
                     })
                 })
                 .collect();
@@ -510,6 +525,12 @@ impl App {
 
     pub fn is_prefetch_complete(&self) -> bool {
         self.prefetch_complete.load(Ordering::Relaxed)
+    }
+
+    pub fn get_prefetch_progress(&self) -> (usize, usize) {
+        let total = self.prefetch_total.load(Ordering::Relaxed);
+        let completed = self.prefetch_completed.load(Ordering::Relaxed);
+        (completed, total)
     }
 }
 

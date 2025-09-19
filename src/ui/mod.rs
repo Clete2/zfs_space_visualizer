@@ -58,7 +58,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
             let content = vec![Line::from(vec![
                 Span::styled(
                     format!("{:<width$}", pool.name, width = max_name_width),
-                    Style::default().fg(colors.accent),
+                    Style::default().fg(colors.selected),
                 ),
                 Span::raw(" "),
                 Span::styled(
@@ -315,9 +315,14 @@ fn draw_snapshot_detail(
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let colors = app.get_theme_colors();
     let prefetch_status = if app.is_prefetch_complete() {
-        ""
+        "".to_string()
     } else {
-        " [Loading snapshots...]"
+        let (completed, total) = app.get_prefetch_progress();
+        if total > 0 {
+            format!(" [Loading snapshots for dataset {} of {}...]", completed, total)
+        } else {
+            " [Loading snapshots...]".to_string()
+        }
     };
 
     let (status_text, help_text) = match &app.current_view {
