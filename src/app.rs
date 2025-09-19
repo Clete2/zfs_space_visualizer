@@ -147,8 +147,11 @@ impl App {
         loop {
             terminal.draw(|f| crate::ui::draw(f, self))?;
 
-            if let Event::Key(key) = event::read()? {
-                self.handle_key_event(key.code, key.modifiers).await?;
+            // Use timeout to allow periodic UI updates during background operations
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(key) = event::read()? {
+                    self.handle_key_event(key.code, key.modifiers).await?;
+                }
             }
 
             if self.should_quit {
@@ -499,24 +502,42 @@ impl App {
         match &self.current_view {
             AppView::DatasetView(_) => {
                 let total_items = self.datasets.len();
-                if self.selected_dataset_index >= self.dataset_scroll_offset + visible_height {
-                    self.dataset_scroll_offset = self.selected_dataset_index.saturating_sub(visible_height - 1);
-                } else if self.selected_dataset_index < self.dataset_scroll_offset {
-                    self.dataset_scroll_offset = self.selected_dataset_index;
-                }
-                if self.dataset_scroll_offset + visible_height > total_items && total_items > visible_height {
-                    self.dataset_scroll_offset = total_items.saturating_sub(visible_height);
+                if total_items <= visible_height {
+                    // All items fit on screen, no scrolling needed
+                    self.dataset_scroll_offset = 0;
+                } else {
+                    // Ensure selected item is visible
+                    if self.selected_dataset_index < self.dataset_scroll_offset {
+                        // Selected item is above visible area, scroll up
+                        self.dataset_scroll_offset = self.selected_dataset_index;
+                    } else if self.selected_dataset_index >= self.dataset_scroll_offset + visible_height {
+                        // Selected item is below visible area, scroll down
+                        self.dataset_scroll_offset = self.selected_dataset_index.saturating_sub(visible_height - 1);
+                    }
+
+                    // Ensure we don't scroll past the end
+                    let max_scroll = total_items.saturating_sub(visible_height);
+                    self.dataset_scroll_offset = self.dataset_scroll_offset.min(max_scroll);
                 }
             }
             AppView::SnapshotDetail(_, _) => {
                 let total_items = self.snapshots.len();
-                if self.selected_snapshot_index >= self.snapshot_scroll_offset + visible_height {
-                    self.snapshot_scroll_offset = self.selected_snapshot_index.saturating_sub(visible_height - 1);
-                } else if self.selected_snapshot_index < self.snapshot_scroll_offset {
-                    self.snapshot_scroll_offset = self.selected_snapshot_index;
-                }
-                if self.snapshot_scroll_offset + visible_height > total_items && total_items > visible_height {
-                    self.snapshot_scroll_offset = total_items.saturating_sub(visible_height);
+                if total_items <= visible_height {
+                    // All items fit on screen, no scrolling needed
+                    self.snapshot_scroll_offset = 0;
+                } else {
+                    // Ensure selected item is visible
+                    if self.selected_snapshot_index < self.snapshot_scroll_offset {
+                        // Selected item is above visible area, scroll up
+                        self.snapshot_scroll_offset = self.selected_snapshot_index;
+                    } else if self.selected_snapshot_index >= self.snapshot_scroll_offset + visible_height {
+                        // Selected item is below visible area, scroll down
+                        self.snapshot_scroll_offset = self.selected_snapshot_index.saturating_sub(visible_height - 1);
+                    }
+
+                    // Ensure we don't scroll past the end
+                    let max_scroll = total_items.saturating_sub(visible_height);
+                    self.snapshot_scroll_offset = self.snapshot_scroll_offset.min(max_scroll);
                 }
             }
             _ => {}
