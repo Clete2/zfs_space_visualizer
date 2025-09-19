@@ -37,6 +37,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
 fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
     let colors = app.get_theme_colors();
+
+    // Find the maximum allocated space for relative scaling
+    let max_allocated = app.pools
+        .iter()
+        .map(|p| p.allocated)
+        .max()
+        .unwrap_or(1);
+
+    let max_name_width = calculate_max_pool_name_width(&app.pools);
+
     let items: Vec<ListItem> = app
         .pools
         .iter()
@@ -48,10 +58,25 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
                 0
             };
 
+            // Calculate relative percentage for bar scaling
+            let relative_percent = if max_allocated > 0 {
+                (pool.allocated as f64 / max_allocated as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
+
+            let bar_chars = (BAR_WIDTH as f64 * relative_percent / 100.0) as usize;
+            let usage_bar = create_progress_bar(bar_chars, '█');
+
             let content = vec![Line::from(vec![
                 Span::styled(
-                    format!("{:<20}", pool.name),
+                    format!("{:<width$}", pool.name, width = max_name_width),
                     Style::default().fg(colors.accent),
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    usage_bar,
+                    Style::default().fg(colors.selected),
                 ),
                 Span::styled(
                     format!(
@@ -89,18 +114,24 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let colors = app.get_theme_colors();
 
-    // Find the current pool to get its usable size for normalization
-    let pool_usable_size = app.pools
-        .iter()
-        .find(|p| p.name == pool_name)
-        .map(|p| p.usable_size)
-        .unwrap_or(1); // Default to 1 to avoid division by zero
-
     let max_name_width = calculate_max_dataset_name_width(&app.datasets, pool_name);
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.datasets.len(), visible_height);
+
+    // Find maximum values in the visible range for relative scaling
+    let visible_datasets: Vec<_> = app.datasets.iter().skip(start).take(end - start).collect();
+    let max_dataset_size = visible_datasets
+        .iter()
+        .map(|d| d.referenced)
+        .max()
+        .unwrap_or(1);
+    let max_snapshot_size = visible_datasets
+        .iter()
+        .map(|d| d.snapshot_used)
+        .max()
+        .unwrap_or(1);
 
     let items: Vec<ListItem> = app
         .datasets
@@ -113,9 +144,17 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
-            // Calculate percentages relative to pool usable size for normalization
-            let dataset_percent = (dataset_only as f64 / pool_usable_size as f64 * 100.0).min(100.0);
-            let snapshot_percent = (snapshot_used as f64 / pool_usable_size as f64 * 100.0).min(100.0);
+            // Calculate percentages relative to maximum values on screen
+            let dataset_percent = if max_dataset_size > 0 {
+                (dataset_only as f64 / max_dataset_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
+            let snapshot_percent = if max_snapshot_size > 0 {
+                (snapshot_used as f64 / max_snapshot_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
 
             let dataset_chars = (BAR_WIDTH as f64 * dataset_percent / 100.0) as usize;
             let snapshot_chars = (BAR_WIDTH as f64 * snapshot_percent / 100.0) as usize;
@@ -184,21 +223,24 @@ fn draw_snapshot_detail(
 ) {
     let colors = app.get_theme_colors();
 
-    // Find the current dataset to get its total size for normalization
-    let dataset_total_size = app.datasets
-        .iter()
-        .find(|d| d.name == dataset_name)
-        .map(|d| d.referenced + d.snapshot_used)
-        .unwrap_or_else(|| {
-            // If not found in current datasets, calculate from snapshots
-            app.snapshots.iter().map(|s| s.used).sum::<u64>().max(1)
-        });
-
     let max_name_width = calculate_max_snapshot_name_width(&app.snapshots);
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.snapshots.len(), visible_height);
+
+    // Find maximum values in the visible range for relative scaling
+    let visible_snapshots: Vec<_> = app.snapshots.iter().skip(start).take(end - start).collect();
+    let max_used_size = visible_snapshots
+        .iter()
+        .map(|s| s.used)
+        .max()
+        .unwrap_or(1);
+    let max_referenced_size = visible_snapshots
+        .iter()
+        .map(|s| s.referenced)
+        .max()
+        .unwrap_or(1);
 
     let items: Vec<ListItem> = app
         .snapshots
@@ -211,9 +253,17 @@ fn draw_snapshot_detail(
             let snapshot_used = snapshot.used;
             let snapshot_referenced = snapshot.referenced;
 
-            // Calculate percentages relative to dataset total size for normalization
-            let used_percent = (snapshot_used as f64 / dataset_total_size as f64 * 100.0).min(100.0);
-            let referenced_percent = (snapshot_referenced as f64 / dataset_total_size as f64 * 100.0).min(100.0);
+            // Calculate percentages relative to maximum values on screen
+            let used_percent = if max_used_size > 0 {
+                (snapshot_used as f64 / max_used_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
+            let referenced_percent = if max_referenced_size > 0 {
+                (snapshot_referenced as f64 / max_referenced_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
 
             let used_chars = (BAR_WIDTH as f64 * used_percent / 100.0) as usize;
             let referenced_chars = (BAR_WIDTH as f64 * referenced_percent / 100.0) as usize;
@@ -404,6 +454,15 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
     f.render_widget(theme_list, chunks[1]);
+}
+
+fn calculate_max_pool_name_width(pools: &[crate::zfs::Pool]) -> usize {
+    pools
+        .iter()
+        .map(|p| p.name.len())
+        .max()
+        .unwrap_or(MIN_NAME_WIDTH)
+        .max(MIN_NAME_WIDTH)
 }
 
 fn calculate_max_dataset_name_width(datasets: &[crate::zfs::Dataset], pool_name: &str) -> usize {
