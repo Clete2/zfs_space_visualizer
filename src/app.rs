@@ -184,6 +184,8 @@ impl App {
                     KeyCode::Enter | KeyCode::Right => self.go_forward().await?,
                     KeyCode::Up => self.previous_item(),
                     KeyCode::Down => self.next_item(),
+                    KeyCode::PageUp => self.page_up(),
+                    KeyCode::PageDown => self.page_down(),
                     _ => {}
                 }
             }
@@ -210,6 +212,38 @@ impl App {
             }
             AppView::SnapshotDetail(_, _) => {
                 self.selected_snapshot_index = (self.selected_snapshot_index + 1).min(self.snapshots.len().saturating_sub(1));
+            }
+            AppView::Help => {}
+        }
+    }
+
+    fn page_up(&mut self) {
+        const PAGE_SIZE: usize = 10;
+        match &self.current_view {
+            AppView::PoolList => {
+                self.selected_pool_index = self.selected_pool_index.saturating_sub(PAGE_SIZE);
+            }
+            AppView::DatasetView(_) => {
+                self.selected_dataset_index = self.selected_dataset_index.saturating_sub(PAGE_SIZE);
+            }
+            AppView::SnapshotDetail(_, _) => {
+                self.selected_snapshot_index = self.selected_snapshot_index.saturating_sub(PAGE_SIZE);
+            }
+            AppView::Help => {}
+        }
+    }
+
+    fn page_down(&mut self) {
+        const PAGE_SIZE: usize = 10;
+        match &self.current_view {
+            AppView::PoolList => {
+                self.selected_pool_index = (self.selected_pool_index + PAGE_SIZE).min(self.pools.len().saturating_sub(1));
+            }
+            AppView::DatasetView(_) => {
+                self.selected_dataset_index = (self.selected_dataset_index + PAGE_SIZE).min(self.datasets.len().saturating_sub(1));
+            }
+            AppView::SnapshotDetail(_, _) => {
+                self.selected_snapshot_index = (self.selected_snapshot_index + PAGE_SIZE).min(self.snapshots.len().saturating_sub(1));
             }
             AppView::Help => {}
         }

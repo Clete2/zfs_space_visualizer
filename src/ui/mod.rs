@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -122,11 +122,10 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
     let items: Vec<ListItem> = app
         .datasets
         .iter()
-        .enumerate()
         .skip(start)
         .take(end - start)
-        .map(|(i, dataset)| {
-            let actual_index = start + i;
+        .enumerate()
+        .map(|(_i, dataset)| {
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
@@ -175,11 +174,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
                 ), Style::default().fg(colors.text)),
             ])];
 
-            ListItem::new(content).style(if actual_index == app.selected_dataset_index {
-                Style::default().bg(colors.highlight)
-            } else {
-                Style::default()
-            })
+            ListItem::new(content)
         })
         .collect();
 
@@ -194,10 +189,16 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().bg(colors.highlight).add_modifier(Modifier::BOLD))
         .highlight_symbol("▶ ");
 
-    f.render_widget(datasets_list, area);
+    // Create list state and set the selected index relative to visible items
+    let mut list_state = ListState::default();
+    if app.selected_dataset_index >= start && app.selected_dataset_index < end {
+        list_state.select(Some(app.selected_dataset_index - start));
+    }
+
+    f.render_stateful_widget(datasets_list, area, &mut list_state);
 }
 
 fn draw_snapshot_detail(
@@ -240,11 +241,10 @@ fn draw_snapshot_detail(
     let items: Vec<ListItem> = app
         .snapshots
         .iter()
-        .enumerate()
         .skip(start)
         .take(end - start)
-        .map(|(i, snapshot)| {
-            let actual_index = start + i;
+        .enumerate()
+        .map(|(_i, snapshot)| {
             let snapshot_used = snapshot.used;
             let snapshot_referenced = snapshot.referenced;
 
@@ -298,11 +298,7 @@ fn draw_snapshot_detail(
                 ), Style::default().fg(colors.text)),
             ])];
 
-            ListItem::new(content).style(if actual_index == app.selected_snapshot_index {
-                Style::default().bg(colors.highlight)
-            } else {
-                Style::default()
-            })
+            ListItem::new(content)
         })
         .collect();
 
@@ -317,10 +313,16 @@ fn draw_snapshot_detail(
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().bg(colors.highlight).add_modifier(Modifier::BOLD))
         .highlight_symbol("▶ ");
 
-    f.render_widget(snapshots_list, area);
+    // Create list state and set the selected index relative to visible items
+    let mut list_state = ListState::default();
+    if app.selected_snapshot_index >= start && app.selected_snapshot_index < end {
+        list_state.select(Some(app.selected_snapshot_index - start));
+    }
+
+    f.render_stateful_widget(snapshots_list, area, &mut list_state);
 }
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
@@ -337,18 +339,30 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let (status_text, help_text) = match &app.current_view {
-        AppView::PoolList => (
-            format!("Pool List{}", prefetch_status),
-            "↑/↓: Navigate | →/Enter: View Datasets | h: Help | q: Quit"
-        ),
-        AppView::DatasetView(pool_name) => (
-            format!("Datasets in {}{}", pool_name, prefetch_status),
-            "↑/↓: Navigate | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit"
-        ),
-        AppView::SnapshotDetail(_, dataset_name) => (
-            format!("Snapshots in {}{}", dataset_name, prefetch_status),
-            "↑/↓: Navigate | s: Sort | ←/Esc: Back | h: Help | q: Quit"
-        ),
+        AppView::PoolList => {
+            let total = app.pools.len();
+            let current = if total > 0 { app.selected_pool_index + 1 } else { 0 };
+            (
+                format!("Pool List ({}/{}){}",  current, total, prefetch_status),
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Datasets | h: Help | q: Quit"
+            )
+        },
+        AppView::DatasetView(pool_name) => {
+            let total = app.datasets.len();
+            let current = if total > 0 { app.selected_dataset_index + 1 } else { 0 };
+            (
+                format!("Datasets in {} ({}/{}){}",  pool_name, current, total, prefetch_status),
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit"
+            )
+        },
+        AppView::SnapshotDetail(_, dataset_name) => {
+            let total = app.snapshots.len();
+            let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
+            (
+                format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
+                "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit"
+            )
+        },
         AppView::Help => (
             format!("Help & Settings{}", prefetch_status),
             "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit"
