@@ -60,7 +60,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
             let content = vec![Line::from(vec![
                 Span::styled(
                     format!("{:<width$}", pool.name, width = max_name_width),
-                    Style::default().fg(colors.selected),
+                    Style::default().fg(colors.text),
                 ),
                 Span::raw(" "),
                 Span::styled(
