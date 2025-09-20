@@ -7,16 +7,12 @@ pub struct Pool {
     pub name: String,
     pub size: u64,
     pub allocated: u64,
-    pub free: u64,
     pub health: String,
-    pub usable_size: u64, // Actual usable space from zfs list (accounts for redundancy)
 }
 
 #[derive(Debug, Clone)]
 pub struct Dataset {
     pub name: String,
-    pub used: u64,
-    pub available: u64,
     pub referenced: u64,
     pub snapshot_used: u64,
 }
@@ -52,46 +48,19 @@ async fn parse_pool_line(line: &str) -> Option<Result<Pool>> {
         return None;
     }
 
-    let pool_name = fields[0];
-    let usable_size = get_pool_usable_size(pool_name)
-        .await
-        .unwrap_or_else(|_| parse_u64(fields[1]));
-
     Some(Ok(Pool {
-        name: pool_name.to_owned(),
+        name: fields[0].to_owned(),
         size: parse_u64(fields[1]),
         allocated: parse_u64(fields[2]),
-        free: parse_u64(fields[3]),
         health: fields[9].to_owned(),
-        usable_size,
     }))
-}
-
-async fn get_pool_usable_size(pool_name: &str) -> Result<u64> {
-    let output = execute_command("zfs", &["list", "-H", "-p", "-o", "used,avail", pool_name])
-        .await
-        .with_context(|| format!("Failed to get usable size for pool {}", pool_name))?;
-
-    let line = output
-        .lines()
-        .next()
-        .ok_or_else(|| anyhow!("No output from zfs list"))?;
-
-    let fields: Vec<&str> = line.split('\t').collect();
-    if fields.len() >= 2 {
-        let used = parse_u64(fields[0]);
-        let avail = parse_u64(fields[1]);
-        Ok(used + avail)
-    } else {
-        Err(anyhow!("Invalid zfs list output format"))
-    }
 }
 
 
 pub async fn get_datasets(pool_name: &str) -> Result<Vec<Dataset>> {
     let output = execute_command(
         "zfs",
-        &["list", "-H", "-p", "-r", "-o", "name,used,avail,refer,usedbysnapshots", pool_name],
+        &["list", "-H", "-p", "-r", "-o", "name,refer,usedbysnapshots", pool_name],
     )
     .await
     .with_context(|| format!("Failed to list datasets for pool {}", pool_name))?;
@@ -105,13 +74,11 @@ pub async fn get_datasets(pool_name: &str) -> Result<Vec<Dataset>> {
 
 fn parse_dataset_line(line: &str) -> Option<Dataset> {
     let fields: Vec<&str> = line.split('\t').collect();
-    if fields.len() >= 5 {
+    if fields.len() >= 3 {
         Some(Dataset {
             name: fields[0].to_owned(),
-            used: parse_u64(fields[1]),
-            available: parse_u64(fields[2]),
-            referenced: parse_u64(fields[3]),
-            snapshot_used: parse_u64(fields[4]),
+            referenced: parse_u64(fields[1]),
+            snapshot_used: parse_u64(fields[2]),
         })
     } else {
         None
