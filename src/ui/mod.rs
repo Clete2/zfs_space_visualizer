@@ -1,3 +1,5 @@
+mod utils;
+
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
@@ -7,14 +9,13 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, AppView, DatasetSortOrder, SnapshotSortOrder, Theme},
+    state::{AppState, AppView},
     zfs::format_bytes,
 };
 
-const MIN_NAME_WIDTH: usize = 20;
-const BAR_WIDTH: usize = 20;
+use utils::*;
 
-pub fn draw(f: &mut Frame, app: &mut App) {
+pub fn draw(f: &mut Frame, app: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)])
@@ -35,12 +36,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_status_bar(f, chunks[1], app);
 }
 
-fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
-    let colors = app.get_theme_colors();
+fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
+    let colors = app.theme_manager.get_colors();
 
-    let max_name_width = calculate_max_pool_name_width(&app.pools);
+    let max_name_width = calculate_max_pool_name_width(&app.data_manager.pools);
 
     let items: Vec<ListItem> = app
+        .data_manager
         .pools
         .iter()
         .enumerate()
@@ -98,28 +100,29 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(pools_list, area);
 }
 
-fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
-    let colors = app.get_theme_colors();
+fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str) {
+    let colors = app.theme_manager.get_colors();
 
-    let max_name_width = calculate_max_dataset_name_width(&app.datasets, pool_name);
+    let max_name_width = calculate_max_dataset_name_width(&app.data_manager.datasets, pool_name);
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
-    let (start, end) = app.get_visible_range(app.datasets.len(), visible_height);
+    let (start, end) = app.get_visible_range(app.data_manager.datasets.len(), visible_height);
 
     // Find maximum values from all datasets for consistent scaling
-    let max_dataset_size = app.datasets
+    let max_dataset_size = app.data_manager.datasets
         .iter()
         .map(|d| d.referenced)
         .max()
         .unwrap_or(1);
-    let max_snapshot_size = app.datasets
+    let max_snapshot_size = app.data_manager.datasets
         .iter()
         .map(|d| d.snapshot_used)
         .max()
         .unwrap_or(1);
 
     let items: Vec<ListItem> = app
+        .data_manager
         .datasets
         .iter()
         .skip(start)
@@ -178,7 +181,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
         })
         .collect();
 
-    let sort_indicator = get_dataset_sort_indicator(&app.dataset_sort_order);
+    let sort_indicator = app.sort_manager.get_dataset_sort_indicator();
 
     let title = format!("Datasets in Pool: {} (Sort: {})", pool_name, sort_indicator);
 
@@ -204,23 +207,23 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &App, pool_name: &str) {
 fn draw_snapshot_detail(
     f: &mut Frame,
     area: Rect,
-    app: &App,
+    app: &AppState,
     _pool_name: &str,
     dataset_name: &str,
 ) {
-    let colors = app.get_theme_colors();
+    let colors = app.theme_manager.get_colors();
 
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
-    let (start, end) = app.get_visible_range(app.snapshots.len(), visible_height);
+    let (start, end) = app.get_visible_range(app.data_manager.snapshots.len(), visible_height);
 
     // Find maximum values from all snapshots for consistent scaling
-    let max_used_size = app.snapshots
+    let max_used_size = app.data_manager.snapshots
         .iter()
         .map(|s| s.used)
         .max()
         .unwrap_or(1);
-    let max_referenced_size = app.snapshots
+    let max_referenced_size = app.data_manager.snapshots
         .iter()
         .map(|s| s.referenced)
         .max()
@@ -239,6 +242,7 @@ fn draw_snapshot_detail(
     };
 
     let items: Vec<ListItem> = app
+        .data_manager
         .snapshots
         .iter()
         .skip(start)
@@ -302,7 +306,7 @@ fn draw_snapshot_detail(
         })
         .collect();
 
-    let sort_indicator = get_snapshot_sort_indicator(&app.snapshot_sort_order);
+    let sort_indicator = app.sort_manager.get_snapshot_sort_indicator();
 
     let title = format!("Snapshots in Dataset: {} (Sort: {})", dataset_name, sort_indicator);
 
@@ -325,12 +329,12 @@ fn draw_snapshot_detail(
     f.render_stateful_widget(snapshots_list, area, &mut list_state);
 }
 
-fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
-    let colors = app.get_theme_colors();
-    let prefetch_status = if app.is_prefetch_complete() {
+fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
+    let colors = app.theme_manager.get_colors();
+    let prefetch_status = if app.data_manager.is_prefetch_complete() {
         "".to_string()
     } else {
-        let (completed, total) = app.get_prefetch_progress();
+        let (completed, total) = app.data_manager.get_prefetch_progress();
         if total > 0 {
             format!(" [Loading snapshots for dataset {} of {}...]", completed, total)
         } else {
@@ -340,7 +344,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
 
     let (status_text, help_text) = match &app.current_view {
         AppView::PoolList => {
-            let total = app.pools.len();
+            let total = app.data_manager.pools.len();
             let current = if total > 0 { app.selected_pool_index + 1 } else { 0 };
             (
                 format!("Pool List ({}/{}){}",  current, total, prefetch_status),
@@ -348,7 +352,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
             )
         },
         AppView::DatasetView(pool_name) => {
-            let total = app.datasets.len();
+            let total = app.data_manager.datasets.len();
             let current = if total > 0 { app.selected_dataset_index + 1 } else { 0 };
             (
                 format!("Datasets in {} ({}/{}){}",  pool_name, current, total, prefetch_status),
@@ -356,7 +360,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
             )
         },
         AppView::SnapshotDetail(_, dataset_name) => {
-            let total = app.snapshots.len();
+            let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
             (
                 format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
@@ -387,8 +391,8 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(status, area);
 }
 
-fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
-    let colors = app.get_theme_colors();
+fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
+    let colors = app.theme_manager.get_colors();
 
     // Split area into help content and theme selection
     let chunks = Layout::default()
@@ -440,20 +444,20 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
             let content = vec![Line::from(vec![
                 Span::styled(
                     format!("  {}", theme_name),
-                    if i == app.selected_theme_index {
+                    if i == app.theme_manager.selected_theme_index {
                         Style::default().fg(colors.selected).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(colors.text)
                     },
                 ),
-                if i == app.selected_theme_index {
+                if i == app.theme_manager.selected_theme_index {
                     Span::styled(" ◀", Style::default().fg(colors.accent))
                 } else {
                     Span::raw("")
                 },
             ])];
 
-            ListItem::new(content).style(if i == app.selected_theme_index {
+            ListItem::new(content).style(if i == app.theme_manager.selected_theme_index {
                 Style::default().bg(colors.highlight)
             } else {
                 Style::default()
@@ -464,7 +468,10 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
     let theme_list = List::new(theme_items)
         .block(
             Block::default()
-                .title(format!("Theme (Current: {})", if app.theme == Theme::Dark { "Dark" } else { "Light" }))
+                .title(format!("Theme (Current: {})", match app.theme_manager.current_theme {
+                    crate::theme::Theme::Dark => "Dark",
+                    crate::theme::Theme::Light => "Light",
+                }))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
@@ -473,82 +480,3 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(theme_list, chunks[1]);
 }
 
-fn calculate_max_pool_name_width(pools: &[crate::zfs::Pool]) -> usize {
-    pools
-        .iter()
-        .map(|p| p.name.len())
-        .max()
-        .unwrap_or(MIN_NAME_WIDTH)
-        .max(MIN_NAME_WIDTH)
-}
-
-fn calculate_max_dataset_name_width(datasets: &[crate::zfs::Dataset], pool_name: &str) -> usize {
-    datasets
-        .iter()
-        .map(|d| {
-            let short_name = d.name
-                .strip_prefix(pool_name)
-                .unwrap_or(&d.name)
-                .trim_start_matches('/');
-            short_name.len()
-        })
-        .max()
-        .unwrap_or(MIN_NAME_WIDTH)
-        .max(MIN_NAME_WIDTH)
-}
-
-
-fn create_progress_bar(filled_chars: usize, fill_char: char) -> String {
-    let mut bar = String::with_capacity(BAR_WIDTH + 2);
-    bar.push('[');
-    for i in 0..BAR_WIDTH {
-        if i < filled_chars {
-            bar.push(fill_char);
-        } else {
-            bar.push(' ');
-        }
-    }
-    bar.push(']');
-    bar
-}
-
-fn get_dataset_sort_indicator(sort_order: &DatasetSortOrder) -> &'static str {
-    match sort_order {
-        DatasetSortOrder::TotalSizeDesc => "Total Size ↓",
-        DatasetSortOrder::TotalSizeAsc => "Total Size ↑",
-        DatasetSortOrder::DatasetSizeDesc => "Dataset Size ↓",
-        DatasetSortOrder::DatasetSizeAsc => "Dataset Size ↑",
-        DatasetSortOrder::SnapshotSizeDesc => "Snapshots Size ↓",
-        DatasetSortOrder::SnapshotSizeAsc => "Snapshots Size ↑",
-        DatasetSortOrder::NameDesc => "Name ↓",
-        DatasetSortOrder::NameAsc => "Name ↑",
-    }
-}
-
-fn get_snapshot_sort_indicator(sort_order: &SnapshotSortOrder) -> &'static str {
-    match sort_order {
-        SnapshotSortOrder::UsedDesc => "Used Size ↓",
-        SnapshotSortOrder::UsedAsc => "Used Size ↑",
-        SnapshotSortOrder::ReferencedDesc => "Referenced Size ↓",
-        SnapshotSortOrder::ReferencedAsc => "Referenced Size ↑",
-        SnapshotSortOrder::NameDesc => "Name ↓",
-        SnapshotSortOrder::NameAsc => "Name ↑",
-    }
-}
-
-fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
-    if text.len() <= max_width {
-        return text.to_string();
-    }
-
-    if max_width <= 3 {
-        return "...".chars().take(max_width).collect();
-    }
-
-    let half = (max_width - 3) / 2;
-    let start = &text[..half];
-    let end_start = text.len() - (max_width - 3 - half);
-    let end = &text[end_start..];
-
-    format!("{}...{}", start, end)
-}

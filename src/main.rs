@@ -1,6 +1,11 @@
 mod app;
 mod zfs;
 mod ui;
+mod state;
+mod navigation;
+mod data;
+mod sorting;
+mod theme;
 
 use anyhow::Result;
 use crossterm::{
