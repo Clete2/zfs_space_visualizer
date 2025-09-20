@@ -80,7 +80,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
             ])];
 
             ListItem::new(content).style(if i == app.selected_pool_index {
-                Style::default().bg(colors.highlight)
+                Style::default().fg(colors.selected).add_modifier(Modifier::BOLD).add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             })
@@ -191,7 +191,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().bg(colors.highlight).add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().fg(colors.selected).add_modifier(Modifier::BOLD).add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
 
     // Create list state and set the selected index relative to visible items
@@ -315,7 +315,7 @@ fn draw_snapshot_detail(
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().bg(colors.highlight).add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().fg(colors.selected).add_modifier(Modifier::BOLD).add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
 
     // Create list state and set the selected index relative to visible items
@@ -456,7 +456,7 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
             ])];
 
             ListItem::new(content).style(if i == app.theme_manager.selected_theme_index {
-                Style::default().bg(colors.highlight)
+                Style::default().fg(colors.selected).add_modifier(Modifier::BOLD).add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             })
