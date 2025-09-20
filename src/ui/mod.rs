@@ -103,8 +103,6 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str) {
     let colors = app.theme_manager.get_colors();
 
-    let max_name_width = calculate_max_dataset_name_width(&app.data_manager.datasets, pool_name);
-
     // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.data_manager.datasets.len(), visible_height);
@@ -120,6 +118,18 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
         .map(|d| d.snapshot_used)
         .max()
         .unwrap_or(1);
+
+    // Calculate available width for names dynamically
+    // Total width minus bars, labels, spacing, and data display
+    // Format: "NAME D:[bar] S:[bar] TOTAL (D:DATASET S:SNAPSHOT)"
+    // Fixed parts: " D:" (3) + bar (22) + " S:" (3) + bar (22) + " " (1) + total (8) + " (D:" (4) + dataset (8) + " S:" (3) + snapshot (8) + ")" (1) = ~82 chars
+    let fixed_width = 82;
+    let available_width = area.width as usize;
+    let name_width = if available_width > fixed_width {
+        (available_width - fixed_width).max(MIN_NAME_WIDTH)
+    } else {
+        MIN_NAME_WIDTH
+    };
 
     let items: Vec<ListItem> = app
         .data_manager
@@ -153,9 +163,16 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
                 .unwrap_or(&dataset.name)
                 .trim_start_matches('/');
 
+            // Handle root dataset case and apply ellipsis
+            let display_name = if short_name.is_empty() || short_name == pool_name {
+                "(root dataset)".to_string()
+            } else {
+                truncate_with_ellipsis(short_name, name_width)
+            };
+
             let content = vec![Line::from(vec![
                 Span::styled(
-                    format!("{:<width$}", short_name, width = max_name_width),
+                    format!("{:<width$}", display_name, width = name_width),
                     Style::default().fg(colors.text),
                 ),
                 Span::raw(" D:"),

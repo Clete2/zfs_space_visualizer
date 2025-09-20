@@ -1,4 +1,4 @@
-use crate::zfs::{Pool, Dataset};
+use crate::zfs::Pool;
 
 pub const MIN_NAME_WIDTH: usize = 20;
 pub const BAR_WIDTH: usize = 20;
@@ -12,20 +12,6 @@ pub fn calculate_max_pool_name_width(pools: &[Pool]) -> usize {
         .max(MIN_NAME_WIDTH)
 }
 
-pub fn calculate_max_dataset_name_width(datasets: &[Dataset], pool_name: &str) -> usize {
-    datasets
-        .iter()
-        .map(|d| {
-            let short_name = d.name
-                .strip_prefix(pool_name)
-                .unwrap_or(&d.name)
-                .trim_start_matches('/');
-            short_name.len()
-        })
-        .max()
-        .unwrap_or(MIN_NAME_WIDTH)
-        .max(MIN_NAME_WIDTH)
-}
 
 pub fn create_progress_bar(filled_chars: usize, fill_char: char) -> String {
     let mut bar = String::with_capacity(BAR_WIDTH + 2);
