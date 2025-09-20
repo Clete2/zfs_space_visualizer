@@ -94,7 +94,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().bg(colors.highlight).fg(Color::White).add_modifier(Modifier::BOLD))
         .highlight_symbol("▶ ");
 
     f.render_widget(pools_list, area);
@@ -473,7 +473,7 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border)),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        .highlight_style(Style::default().bg(colors.highlight).fg(Color::White).add_modifier(Modifier::BOLD));
 
     f.render_widget(theme_list, chunks[1]);
 }
