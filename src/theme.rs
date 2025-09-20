@@ -16,6 +16,7 @@ impl Default for Theme {
 pub struct ThemeColors {
     pub text: Color,
     pub accent: Color,
+    pub highlight: Color,
     pub border: Color,
     pub selected: Color,
 }
@@ -26,12 +27,14 @@ impl Theme {
             Theme::Dark => ThemeColors {
                 text: Color::Reset,
                 accent: Color::Cyan,
+                highlight: Color::Blue,
                 border: Color::Gray,
                 selected: Color::Yellow,
             },
             Theme::Light => ThemeColors {
                 text: Color::Reset,
                 accent: Color::Blue,
+                highlight: Color::LightBlue,
                 border: Color::DarkGray,
                 selected: Color::Magenta,
             },
