@@ -127,8 +127,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
         .iter()
         .skip(start)
         .take(end - start)
-        .enumerate()
-        .map(|(_i, dataset)| {
+        .map(|dataset| {
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
@@ -157,7 +156,7 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
             let content = vec![Line::from(vec![
                 Span::styled(
                     format!("{:<width$}", short_name, width = max_name_width),
-                    Style::default().fg(colors.selected),
+                    Style::default().fg(colors.text),
                 ),
                 Span::raw(" D:"),
                 Span::styled(
@@ -247,8 +246,7 @@ fn draw_snapshot_detail(
         .iter()
         .skip(start)
         .take(end - start)
-        .enumerate()
-        .map(|(_i, snapshot)| {
+        .map(|snapshot| {
             let snapshot_used = snapshot.used;
             let snapshot_referenced = snapshot.referenced;
 
@@ -273,7 +271,7 @@ fn draw_snapshot_detail(
             // Extract just the snapshot name (after the @)
             let short_name = snapshot.name
                 .split('@')
-                .last()
+                .next_back()
                 .unwrap_or(&snapshot.name);
 
             // Truncate name with ellipsis if needed
@@ -282,7 +280,7 @@ fn draw_snapshot_detail(
             let content = vec![Line::from(vec![
                 Span::styled(
                     format!("{:<width$}", display_name, width = name_width),
-                    Style::default().fg(colors.selected),
+                    Style::default().fg(colors.text),
                 ),
                 Span::raw(" U:"),
                 Span::styled(
@@ -436,7 +434,7 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
     f.render_widget(help_paragraph, chunks[0]);
 
     // Theme selection
-    let themes = vec!["Dark", "Light"];
+    let themes = ["Dark", "Light"];
     let theme_items: Vec<ListItem> = themes
         .iter()
         .enumerate()
