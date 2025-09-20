@@ -14,53 +14,40 @@ impl Default for Theme {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeColors {
-    pub background: Color,
     pub text: Color,
     pub accent: Color,
     pub highlight: Color,
     pub border: Color,
     pub selected: Color,
-    pub warning: Color,
 }
 
 impl Theme {
     pub const fn get_colors(&self) -> ThemeColors {
         match self {
             Theme::Dark => ThemeColors {
-                background: Color::Black,
-                text: Color::White,
+                text: Color::Reset,
                 accent: Color::Cyan,
                 highlight: Color::Blue,
                 border: Color::Gray,
                 selected: Color::Yellow,
-                warning: Color::Red,
             },
             Theme::Light => ThemeColors {
-                background: Color::White,
-                text: Color::Black,
+                text: Color::Reset,
                 accent: Color::Blue,
                 highlight: Color::LightBlue,
                 border: Color::DarkGray,
                 selected: Color::Magenta,
-                warning: Color::Red,
             },
         }
     }
 }
 
+#[derive(Default)]
 pub struct ThemeManager {
     pub current_theme: Theme,
     pub selected_theme_index: usize,
 }
 
-impl Default for ThemeManager {
-    fn default() -> Self {
-        Self {
-            current_theme: Theme::default(),
-            selected_theme_index: 0,
-        }
-    }
-}
 
 impl ThemeManager {
     pub fn new() -> Self {
