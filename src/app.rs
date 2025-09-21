@@ -42,6 +42,3 @@ impl App {
         Ok(())
     }
 }
-
-// Re-export types that external code might expect to be available from app module
-// (Currently none needed, but can be added as needed)

@@ -74,19 +74,12 @@ impl Default for SnapshotSortOrder {
     }
 }
 
+#[derive(Default)]
 pub struct SortManager {
     pub dataset_sort_order: DatasetSortOrder,
     pub snapshot_sort_order: SnapshotSortOrder,
 }
 
-impl Default for SortManager {
-    fn default() -> Self {
-        Self {
-            dataset_sort_order: DatasetSortOrder::default(),
-            snapshot_sort_order: SnapshotSortOrder::default(),
-        }
-    }
-}
 
 impl SortManager {
     pub fn new() -> Self {
