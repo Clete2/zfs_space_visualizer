@@ -54,29 +54,35 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
 
             // Use actual percentage for bar scaling (0-100%)
             let bar_chars = (BAR_WIDTH as f64 * usage_percent / 100.0) as usize;
-            let usage_bar = create_progress_bar(bar_chars, '█');
 
-            let content = vec![Line::from(vec![
+            // Create text to overlay on the bar
+            let bar_text = format!("{}/{}", format_bytes(pool.allocated), format_bytes(pool.size));
+            let usage_bar_spans = create_progress_bar_with_text(
+                bar_chars,
+                '█',
+                bar_text,
+                colors.accent,  // Background color for filled portion
+                Color::White    // Text color
+            );
+
+            let mut content_spans = vec![
                 Span::styled(
                     format!("{:<width$}", pool.name, width = max_name_width),
                     Style::default().fg(colors.text),
                 ),
                 Span::raw(" "),
-                Span::styled(
-                    usage_bar,
-                    Style::default().fg(colors.accent),
-                ),
-                Span::styled(
-                    format!(
-                        " {:>8} / {:>8} ({:>3.0}%) [{}]",
-                        format_bytes(pool.allocated),
-                        format_bytes(pool.size),
-                        usage_percent,
-                        pool.health
-                    ),
-                    Style::default().fg(colors.text),
-                ),
-            ])];
+            ];
+
+            // Add the progress bar with text overlay
+            content_spans.extend(usage_bar_spans);
+
+            // Add remaining info after the bar
+            content_spans.push(Span::styled(
+                format!(" ({:>3.0}%) [{}]", usage_percent, pool.health),
+                Style::default().fg(colors.text),
+            ));
+
+            let content = vec![Line::from(content_spans)];
 
             ListItem::new(content)
         })
@@ -117,15 +123,20 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
         .map(|d| d.snapshot_used)
         .max()
         .unwrap_or(1);
+    let max_total_size = app.data_manager.datasets
+        .iter()
+        .map(|d| d.referenced + d.snapshot_used)
+        .max()
+        .unwrap_or(1);
 
     // Calculate available width for names dynamically
-    // Total width minus bars, labels, spacing, and data display
-    // Format: "NAME D:[bar] S:[bar] TOTAL (D:DATASET S:SNAPSHOT)"
-    // Fixed parts: " D:" (3) + bar (22) + " S:" (3) + bar (22) + " " (1) + total (8) + " (D:" (4) + dataset (8) + " S:" (3) + snapshot (8) + ")" (1) = ~82 chars
-    let fixed_width = 82;
+    // Format: "NAME D:[bar] S:[bar] T:[bar]"
+    // All bars are same size: " D:" (3) + "[22]" (24) + " S:" (3) + "[22]" (24) + " T:" (3) + "[22]" (24) = 81 chars exactly
+    // Subtracting 2 to shift bars right by 1 column (match snapshot alignment)
+    let fixed_width = 79;
     let available_width = area.width as usize;
     let name_width = if available_width > fixed_width {
-        (available_width - fixed_width).max(MIN_NAME_WIDTH)
+        available_width - fixed_width
     } else {
         MIN_NAME_WIDTH
     };
@@ -140,6 +151,8 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
             let dataset_only = dataset.referenced;
             let snapshot_used = dataset.snapshot_used;
 
+            let total_used = dataset_only + snapshot_used;
+
             // Calculate percentages relative to maximum values on screen
             let dataset_percent = if max_dataset_size > 0 {
                 (dataset_only as f64 / max_dataset_size as f64 * 100.0).min(100.0)
@@ -151,12 +164,45 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
             } else {
                 0.0
             };
+            let total_percent = if max_total_size > 0 {
+                (total_used as f64 / max_total_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
 
             let dataset_chars = (BAR_WIDTH as f64 * dataset_percent / 100.0) as usize;
             let snapshot_chars = (BAR_WIDTH as f64 * snapshot_percent / 100.0) as usize;
 
-            let dataset_bar = create_progress_bar(dataset_chars, '█');
-            let snapshot_bar = create_progress_bar(snapshot_chars, '▓');
+            // Create text overlays for the bars
+            let dataset_text = format_bytes(dataset_only);
+            let snapshot_text = format_bytes(snapshot_used);
+            let total_text = format_bytes(total_used);
+
+            let dataset_bar_spans = create_progress_bar_with_text(
+                dataset_chars,
+                '█',
+                dataset_text,
+                colors.accent,  // Background color for filled portion
+                Color::White    // Text color
+            );
+
+            let snapshot_bar_spans = create_progress_bar_with_text(
+                snapshot_chars,
+                '█',  // Same character as dataset
+                snapshot_text,
+                colors.accent,  // Same color as dataset bar
+                Color::White    // Text color
+            );
+
+            let total_chars = (BAR_WIDTH as f64 * total_percent / 100.0) as usize;
+
+            let total_bar_spans = create_progress_bar_with_text(
+                total_chars,
+                '█',  // Same character as other bars
+                total_text,
+                colors.accent,  // Same color as other bars
+                Color::White    // Text color
+            );
 
             let short_name = dataset.name.strip_prefix(pool_name)
                 .unwrap_or(&dataset.name)
@@ -169,28 +215,28 @@ fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str)
                 truncate_with_ellipsis(short_name, name_width)
             };
 
-            let content = vec![Line::from(vec![
+            let mut content_spans = vec![
                 Span::styled(
                     format!("{:<width$}", display_name, width = name_width),
                     Style::default().fg(colors.text),
                 ),
                 Span::raw(" D:"),
-                Span::styled(
-                    dataset_bar,
-                    Style::default().fg(colors.accent),
-                ),
-                Span::raw(" S:"),
-                Span::styled(
-                    snapshot_bar,
-                    Style::default().fg(colors.text),
-                ),
-                Span::styled(format!(
-                    " {:>8} (D:{:>8} S:{:>8})",
-                    format_bytes(dataset_only + snapshot_used),
-                    format_bytes(dataset_only),
-                    format_bytes(snapshot_used),
-                ), Style::default().fg(colors.text)),
-            ])];
+            ];
+
+            // Add dataset bar with text overlay
+            content_spans.extend(dataset_bar_spans);
+
+            content_spans.push(Span::raw(" S:"));
+
+            // Add snapshot bar with text overlay
+            content_spans.extend(snapshot_bar_spans);
+
+            content_spans.push(Span::raw(" T:"));
+
+            // Add total bar with text overlay
+            content_spans.extend(total_bar_spans);
+
+            let content = vec![Line::from(content_spans)];
 
             ListItem::new(content)
         })
@@ -246,9 +292,9 @@ fn draw_snapshot_detail(
 
     // Calculate available width for names dynamically
     // Total width minus bars, labels, spacing, and data display
-    // Format: "NAME U:[bar] R:[bar] USED_SIZE REF_SIZE CREATION"
-    // Fixed parts: " U:" (3) + bar (22) + " R:" (3) + bar (22) + " " (1) + used (8) + " " (1) + ref (8) + " " (1) + creation (~19) = ~88 chars
-    let fixed_width = 88;
+    // Format: "NAME U:[bar] R:[bar]"
+    // Fixed parts: " U:" (3) + "[22]" (24) + " R:" (3) + "[22]" (24) = 54 chars exactly
+    let fixed_width = 54;
     let available_width = area.width as usize;
     let name_width = if available_width > fixed_width {
         (available_width - fixed_width).max(MIN_NAME_WIDTH)
@@ -281,8 +327,25 @@ fn draw_snapshot_detail(
             let used_chars = (BAR_WIDTH as f64 * used_percent / 100.0) as usize;
             let referenced_chars = (BAR_WIDTH as f64 * referenced_percent / 100.0) as usize;
 
-            let used_bar = create_progress_bar(used_chars, '▓');
-            let referenced_bar = create_progress_bar(referenced_chars, '█');
+            // Create text overlays for the bars
+            let used_text = format_bytes(snapshot_used);
+            let referenced_text = format_bytes(snapshot_referenced);
+
+            let used_bar_spans = create_progress_bar_with_text(
+                used_chars,
+                '▓',
+                used_text,
+                colors.accent,  // Same color as other bars
+                Color::White    // Text color
+            );
+
+            let referenced_bar_spans = create_progress_bar_with_text(
+                referenced_chars,
+                '█',
+                referenced_text,
+                colors.accent,  // Same color as other bars
+                Color::White    // Text color
+            );
 
             // Extract just the snapshot name (after the @)
             let short_name = snapshot.name
@@ -293,28 +356,23 @@ fn draw_snapshot_detail(
             // Truncate name with ellipsis if needed
             let display_name = truncate_with_ellipsis(short_name, name_width);
 
-            let content = vec![Line::from(vec![
+            let mut content_spans = vec![
                 Span::styled(
                     format!("{:<width$}", display_name, width = name_width),
                     Style::default().fg(colors.text),
                 ),
                 Span::raw(" U:"),
-                Span::styled(
-                    used_bar,
-                    Style::default().fg(colors.text),
-                ),
-                Span::raw(" R:"),
-                Span::styled(
-                    referenced_bar,
-                    Style::default().fg(colors.accent),
-                ),
-                Span::styled(format!(
-                    " {:>8} {:>8} {}",
-                    format_bytes(snapshot_used),
-                    format_bytes(snapshot_referenced),
-                    snapshot.creation
-                ), Style::default().fg(colors.text)),
-            ])];
+            ];
+
+            // Add used bar with text overlay
+            content_spans.extend(used_bar_spans);
+
+            content_spans.push(Span::raw(" R:"));
+
+            // Add referenced bar with text overlay
+            content_spans.extend(referenced_bar_spans);
+
+            let content = vec![Line::from(content_spans)];
 
             ListItem::new(content)
         })

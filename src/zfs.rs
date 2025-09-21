@@ -22,7 +22,6 @@ pub struct Snapshot {
     pub name: String,
     pub used: u64,
     pub referenced: u64,
-    pub creation: String,
 }
 
 pub async fn get_pools() -> Result<Vec<Pool>> {
@@ -89,7 +88,7 @@ fn parse_dataset_line(line: &str) -> Option<Dataset> {
 pub async fn get_snapshots(dataset_name: &str) -> Result<Vec<Snapshot>> {
     let output = execute_command(
         "zfs",
-        &["list", "-H", "-p", "-t", "snap", "-r", "-o", "name,used,refer,creation", dataset_name],
+        &["list", "-H", "-p", "-t", "snap", "-r", "-o", "name,used,refer", dataset_name],
     )
     .await
     .with_context(|| format!("Failed to list snapshots for dataset {}", dataset_name))?;
@@ -103,12 +102,11 @@ pub async fn get_snapshots(dataset_name: &str) -> Result<Vec<Snapshot>> {
 
 fn parse_snapshot_line(line: &str) -> Option<Snapshot> {
     let fields: Vec<&str> = line.split('\t').collect();
-    if fields.len() >= 4 {
+    if fields.len() >= 3 {
         Some(Snapshot {
             name: fields[0].to_owned(),
             used: parse_u64(fields[1]),
             referenced: parse_u64(fields[2]),
-            creation: fields[3].to_owned(),
         })
     } else {
         None
