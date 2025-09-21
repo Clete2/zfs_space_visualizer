@@ -45,8 +45,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
         .data_manager
         .pools
         .iter()
-        .enumerate()
-        .map(|(i, pool)| {
+        .map(|pool| {
             let usage_percent = if pool.size > 0 {
                 pool.allocated as f64 / pool.size as f64 * 100.0
             } else {
@@ -79,11 +78,7 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
                 ),
             ])];
 
-            ListItem::new(content).style(if i == app.selected_pool_index {
-                Style::default().bg(colors.highlight).fg(Color::White)
-            } else {
-                Style::default()
-            })
+            ListItem::new(content)
         })
         .collect();
 
@@ -97,7 +92,11 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
         .highlight_style(Style::default().bg(colors.highlight).fg(Color::White).add_modifier(Modifier::BOLD))
         .highlight_symbol("▶ ");
 
-    f.render_widget(pools_list, area);
+    // Create list state and set the selected index
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.selected_pool_index));
+
+    f.render_stateful_widget(pools_list, area, &mut list_state);
 }
 
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str) {
