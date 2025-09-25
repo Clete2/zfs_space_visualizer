@@ -402,6 +402,18 @@ fn draw_snapshot_detail(
 }
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
+    // Helper function to get delete confirmation text
+    fn get_delete_help_text(app: &AppState) -> String {
+        if app.delete_confirmation_pending {
+            if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
+                format!("Are you sure you want to delete {}? Press 'd' again to confirm.", snapshot.name)
+            } else {
+                "Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string()
+            }
+        } else {
+            "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+        }
+    }
     let colors = app.theme_manager.get_colors();
     let prefetch_status = if app.data_manager.is_prefetch_complete() {
         "".to_string()
@@ -420,7 +432,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             let current = if total > 0 { app.selected_pool_index + 1 } else { 0 };
             (
                 format!("Pool List ({}/{}){}",  current, total, prefetch_status),
-                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Datasets | h: Help | q: Quit"
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Datasets | h: Help | q: Quit".to_string()
             )
         },
         AppView::DatasetView(pool_name) => {
@@ -428,25 +440,20 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             let current = if total > 0 { app.selected_dataset_index + 1 } else { 0 };
             (
                 format!("Datasets in {} ({}/{}){}",  pool_name, current, total, prefetch_status),
-                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit"
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
             )
         },
         AppView::SnapshotDetail(_, dataset_name) => {
             let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
-            let help_text = if app.delete_confirmation_pending {
-                "Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel"
-            } else {
-                "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit"
-            };
             (
                 format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
-                help_text
+                get_delete_help_text(app)
             )
         },
         AppView::Help => (
             format!("Help & Settings{}", prefetch_status),
-            "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit"
+            "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit".to_string()
         ),
     };
 
@@ -455,7 +462,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             Span::styled(&status_text, Style::default().fg(colors.accent)),
         ]),
         Line::from(vec![
-            Span::styled(help_text, Style::default().fg(colors.text)),
+            Span::styled(&help_text, Style::default().fg(colors.text)),
         ]),
     ])
     .block(

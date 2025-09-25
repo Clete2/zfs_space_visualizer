@@ -177,34 +177,40 @@ impl Navigator {
 
     async fn handle_delete_key(state: &mut AppState) -> Result<()> {
         // Only allow deletion in snapshot view
-        if let AppView::SnapshotDetail(_pool_name, dataset_name) = &state.current_view {
-            if state.delete_confirmation_pending {
-                // Second 'd' press - execute deletion
-                if let Some(snapshot) = state.data_manager.snapshots.get(state.selected_snapshot_index) {
-                    let snapshot_name = snapshot.name.clone();
-                    match crate::zfs::delete_snapshot(&snapshot_name).await {
-                        Ok(()) => {
-                            // Reload snapshots after deletion
-                            state.data_manager.load_snapshots(dataset_name).await?;
-                            state.sort_manager.sort_snapshots(&mut state.data_manager.snapshots);
+        let AppView::SnapshotDetail(_pool_name, dataset_name) = &state.current_view else {
+            return Ok(());
+        };
 
-                            // Adjust selection if we deleted the last item
-                            if state.selected_snapshot_index >= state.data_manager.snapshots.len() {
-                                state.selected_snapshot_index = state.data_manager.snapshots.len().saturating_sub(1);
-                            }
-                        }
-                        Err(e) => {
-                            // TODO: Show error message to user
-                            eprintln!("Failed to delete snapshot: {}", e);
-                        }
-                    }
+        if !state.delete_confirmation_pending {
+            // First 'd' press - start confirmation
+            state.start_delete_confirmation();
+            return Ok(());
+        }
+
+        // Second 'd' press - execute deletion
+        let Some(snapshot) = state.data_manager.snapshots.get(state.selected_snapshot_index) else {
+            state.clear_delete_confirmation();
+            return Ok(());
+        };
+
+        let snapshot_name = snapshot.name.clone();
+        match crate::zfs::delete_snapshot(&snapshot_name).await {
+            Ok(()) => {
+                // Reload snapshots after deletion
+                state.data_manager.load_snapshots(dataset_name).await?;
+                state.sort_manager.sort_snapshots(&mut state.data_manager.snapshots);
+
+                // Adjust selection if we deleted the last item
+                if state.selected_snapshot_index >= state.data_manager.snapshots.len() {
+                    state.selected_snapshot_index = state.data_manager.snapshots.len().saturating_sub(1);
                 }
-                state.clear_delete_confirmation();
-            } else {
-                // First 'd' press - start confirmation
-                state.start_delete_confirmation();
+            }
+            Err(e) => {
+                // TODO: Show error message to user
+                eprintln!("Failed to delete snapshot: {}", e);
             }
         }
+        state.clear_delete_confirmation();
         Ok(())
     }
 }
