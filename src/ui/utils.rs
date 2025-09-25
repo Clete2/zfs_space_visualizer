@@ -16,8 +16,6 @@ pub fn calculate_max_pool_name_width(pools: &[Pool]) -> usize {
         .max(MIN_NAME_WIDTH)
 }
 
-
-
 pub fn create_progress_bar_with_text(
     filled_chars: usize,
     fill_char: char,
