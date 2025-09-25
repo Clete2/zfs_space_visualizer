@@ -333,7 +333,7 @@ fn draw_snapshot_detail(
 
             let used_bar_spans = create_progress_bar_with_text(
                 used_chars,
-                '▓',
+                '█',
                 used_text,
                 colors.accent,  // Same color as other bars
                 Color::White    // Text color
@@ -490,9 +490,9 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
         Line::from(""),
         Line::from("LEGEND:"),
         Line::from("  Dataset View:"),
-        Line::from("    D: █ Dataset data    S: ▓ Snapshot data"),
+        Line::from("    D: █ Dataset data    S: █ Snapshot data"),
         Line::from("  Snapshot View:"),
-        Line::from("    U: ▓ Used space     R: █ Referenced data"),
+        Line::from("    U: █ Used space     R: █ Referenced data"),
     ];
 
     let help_paragraph = Paragraph::new(help_text)
