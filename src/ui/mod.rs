@@ -434,9 +434,14 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
         AppView::SnapshotDetail(_, dataset_name) => {
             let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
+            let help_text = if app.delete_confirmation_pending {
+                "Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel"
+            } else {
+                "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit"
+            };
             (
                 format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
-                "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit"
+                help_text
             )
         },
         AppView::Help => (

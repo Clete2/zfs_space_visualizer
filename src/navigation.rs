@@ -35,6 +35,7 @@ impl Navigator {
                     KeyCode::Down => Self::next_item(state),
                     KeyCode::PageUp => Self::page_up(state),
                     KeyCode::PageDown => Self::page_down(state),
+                    KeyCode::Char('d') => Self::handle_delete_key(state).await?,
                     _ => {}
                 }
             }
@@ -172,5 +173,38 @@ impl Navigator {
             }
             _ => {}
         }
+    }
+
+    async fn handle_delete_key(state: &mut AppState) -> Result<()> {
+        // Only allow deletion in snapshot view
+        if let AppView::SnapshotDetail(_pool_name, dataset_name) = &state.current_view {
+            if state.delete_confirmation_pending {
+                // Second 'd' press - execute deletion
+                if let Some(snapshot) = state.data_manager.snapshots.get(state.selected_snapshot_index) {
+                    let snapshot_name = snapshot.name.clone();
+                    match crate::zfs::delete_snapshot(&snapshot_name).await {
+                        Ok(()) => {
+                            // Reload snapshots after deletion
+                            state.data_manager.load_snapshots(dataset_name).await?;
+                            state.sort_manager.sort_snapshots(&mut state.data_manager.snapshots);
+
+                            // Adjust selection if we deleted the last item
+                            if state.selected_snapshot_index >= state.data_manager.snapshots.len() {
+                                state.selected_snapshot_index = state.data_manager.snapshots.len().saturating_sub(1);
+                            }
+                        }
+                        Err(e) => {
+                            // TODO: Show error message to user
+                            eprintln!("Failed to delete snapshot: {}", e);
+                        }
+                    }
+                }
+                state.clear_delete_confirmation();
+            } else {
+                // First 'd' press - start confirmation
+                state.start_delete_confirmation();
+            }
+        }
+        Ok(())
     }
 }

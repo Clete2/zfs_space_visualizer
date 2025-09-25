@@ -3,6 +3,7 @@ use crate::{
     sorting::SortManager,
     theme::ThemeManager,
 };
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub enum AppView {
@@ -30,6 +31,10 @@ pub struct AppState {
     pub data_manager: DataManager,
     pub sort_manager: SortManager,
     pub theme_manager: ThemeManager,
+
+    // Deletion confirmation state
+    pub delete_confirmation_pending: bool,
+    pub delete_confirmation_timestamp: Option<Instant>,
 }
 
 impl Default for AppState {
@@ -46,6 +51,8 @@ impl Default for AppState {
             data_manager: DataManager::new(),
             sort_manager: SortManager::new(),
             theme_manager: ThemeManager::new(),
+            delete_confirmation_pending: false,
+            delete_confirmation_timestamp: None,
         }
     }
 }
@@ -125,5 +132,23 @@ impl AppState {
     pub fn reset_snapshot_selection(&mut self) {
         self.selected_snapshot_index = 0;
         self.snapshot_scroll_offset = 0;
+    }
+
+    pub fn start_delete_confirmation(&mut self) {
+        self.delete_confirmation_pending = true;
+        self.delete_confirmation_timestamp = Some(Instant::now());
+    }
+
+    pub fn clear_delete_confirmation(&mut self) {
+        self.delete_confirmation_pending = false;
+        self.delete_confirmation_timestamp = None;
+    }
+
+    pub fn is_delete_confirmation_expired(&self) -> bool {
+        if let Some(timestamp) = self.delete_confirmation_timestamp {
+            timestamp.elapsed().as_secs() >= 3
+        } else {
+            false
+        }
     }
 }

@@ -28,6 +28,11 @@ impl App {
         loop {
             terminal.draw(|f| crate::ui::draw(f, &mut self.state))?;
 
+            // Check for timeout expiration
+            if self.state.delete_confirmation_pending && self.state.is_delete_confirmation_expired() {
+                self.state.clear_delete_confirmation();
+            }
+
             // Use timeout to allow periodic UI updates during background operations
             if event::poll(std::time::Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {

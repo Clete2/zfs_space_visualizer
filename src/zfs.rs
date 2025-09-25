@@ -85,6 +85,13 @@ fn parse_dataset_line(line: &str) -> Option<Dataset> {
 }
 
 
+pub async fn delete_snapshot(snapshot_name: &str) -> Result<()> {
+    execute_command("zfs", &["destroy", snapshot_name])
+        .await
+        .context("Failed to delete ZFS snapshot")?;
+    Ok(())
+}
+
 pub async fn get_snapshots(dataset_name: &str) -> Result<Vec<Snapshot>> {
     let output = execute_command(
         "zfs",
