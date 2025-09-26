@@ -26,8 +26,6 @@ impl App {
         self.state.data_manager.load_pools().await?;
 
         loop {
-            terminal.draw(|f| crate::ui::draw(f, &mut self.state))?;
-
             // Check for timeout expiration
             if self.state.delete_confirmation_pending && self.state.is_delete_confirmation_expired() {
                 self.state.clear_delete_confirmation();
@@ -39,6 +37,9 @@ impl App {
                     Navigator::handle_key_event(&mut self.state, key.code, key.modifiers).await?;
                 }
             }
+
+            // Draw UI after processing events
+            terminal.draw(|f| crate::ui::draw(f, &mut self.state))?;
 
             if self.state.should_quit {
                 break;
