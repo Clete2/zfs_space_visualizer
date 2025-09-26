@@ -30,11 +30,7 @@ pub fn create_progress_bar_with_text(
 
     // Right-justify the text within the bar
     let text_len = text.len().min(BAR_WIDTH);
-    let start_pos = if text_len < BAR_WIDTH {
-        BAR_WIDTH - text_len  // Right-justify
-    } else {
-        0
-    };
+    let start_pos = BAR_WIDTH.saturating_sub(text_len);
 
     let truncated_text = if text.len() > BAR_WIDTH {
         text[..BAR_WIDTH].to_string()
