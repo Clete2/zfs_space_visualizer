@@ -32,13 +32,13 @@ impl Navigator {
                     KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => state.should_quit = true,
                     KeyCode::Char('h') => Self::show_help(state),
                     KeyCode::Char('s') => Self::toggle_sort(state),
+                    KeyCode::Char('d') => Self::handle_delete_key(state).await?,
                     KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => Self::go_back(state).await?,
                     KeyCode::Enter | KeyCode::Right => Self::go_forward(state).await?,
                     KeyCode::Up => Self::previous_item(state),
                     KeyCode::Down => Self::next_item(state),
                     KeyCode::PageUp => Self::page_up(state),
                     KeyCode::PageDown => Self::page_down(state),
-                    KeyCode::Char('d') => Self::handle_delete_key(state).await?,
                     _ => {}
                 }
             }
@@ -179,6 +179,11 @@ impl Navigator {
         let AppView::SnapshotDetail(_pool_name, dataset_name) = &state.current_view else {
             return Ok(());
         };
+
+        // If no snapshots exist, do nothing
+        if state.data_manager.snapshots.is_empty() {
+            return Ok(());
+        }
 
         if !state.delete_confirmation_pending {
             // First 'd' press - start confirmation

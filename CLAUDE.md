@@ -9,7 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `./build.sh [target]` - Cross-compile for specified target (defaults to x86_64-apple-darwin)
 - `./build.sh x86_64-apple-darwin` - Build for local macOS target
 - `./build.sh x86_64-unknown-linux-gnu` - Build for Linux (requires cross tool and Docker)
-- After building, manually deploy with: `scp target/[target]/release/zfs_space_visualizer cleteserver.home:/home/clete2/`
+
+# Behaviors
+- Always run `cargo clippy --fix --allow-dirty` before all commits
 
 ## Architecture Overview
 
