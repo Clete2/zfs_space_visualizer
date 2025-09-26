@@ -8,5 +8,4 @@ ratatui = "0.28"
 crossterm = "0.28"
 tokio = { version = "1.40", features = ["full"] }
 anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
 futures = "0.3"

@@ -8,6 +8,9 @@ use tokio::task;
 
 use crate::zfs::{Pool, Dataset, Snapshot};
 
+const IO_CONCURRENCY_MULTIPLIER: usize = 8;
+const DEFAULT_CPU_COUNT: usize = 4;
+
 pub struct DataManager {
     pub pools: Vec<Pool>,
     pub datasets: Vec<Dataset>,
@@ -74,11 +77,11 @@ impl DataManager {
             prefetch_completed.store(0, Ordering::Relaxed);
 
             // Create semaphore to limit concurrent snapshot fetches
-            // Default to 4x CPU count for optimal I/O concurrency
+            // Use CPU count with I/O multiplier for optimal concurrency
             let cpu_count = std::thread::available_parallelism()
                 .map(|n| n.get())
-                .unwrap_or(4);
-            let max_concurrent = cpu_count * 8;
+                .unwrap_or(DEFAULT_CPU_COUNT);
+            let max_concurrent = cpu_count * IO_CONCURRENCY_MULTIPLIER;
             let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
 
             // Prefetch snapshots for each dataset in parallel

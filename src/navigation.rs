@@ -3,6 +3,9 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 use crate::state::{AppState, AppView};
 
+const PAGE_SIZE: usize = 10;
+pub const DELETE_CONFIRMATION_TIMEOUT_SECS: u64 = 3;
+
 pub struct Navigator;
 
 impl Navigator {
@@ -68,7 +71,6 @@ impl Navigator {
     }
 
     fn page_up(state: &mut AppState) {
-        const PAGE_SIZE: usize = 10;
         match &state.current_view {
             AppView::PoolList => {
                 state.selected_pool_index = state.selected_pool_index.saturating_sub(PAGE_SIZE);
@@ -84,7 +86,6 @@ impl Navigator {
     }
 
     fn page_down(state: &mut AppState) {
-        const PAGE_SIZE: usize = 10;
         match &state.current_view {
             AppView::PoolList => {
                 state.selected_pool_index = (state.selected_pool_index + PAGE_SIZE).min(state.data_manager.pools.len().saturating_sub(1));
@@ -102,8 +103,7 @@ impl Navigator {
     async fn go_forward(state: &mut AppState) -> Result<()> {
         match &state.current_view {
             AppView::PoolList => {
-                if let Some(pool) = state.data_manager.pools.get(state.selected_pool_index) {
-                    let pool_name = pool.name.clone();
+                if let Some(pool_name) = state.data_manager.pools.get(state.selected_pool_index).map(|p| p.name.clone()) {
                     state.current_view = AppView::DatasetView(pool_name.clone());
                     state.selected_dataset_index = 0;
                     state.data_manager.load_datasets(&pool_name).await?;
@@ -112,8 +112,7 @@ impl Navigator {
                 }
             }
             AppView::DatasetView(pool_name) => {
-                if let Some(dataset) = state.data_manager.datasets.get(state.selected_dataset_index) {
-                    let dataset_name = dataset.name.clone();
+                if let Some(dataset_name) = state.data_manager.datasets.get(state.selected_dataset_index).map(|d| d.name.clone()) {
                     state.current_view = AppView::SnapshotDetail(pool_name.clone(), dataset_name.clone());
                     state.selected_snapshot_index = 0;
                     state.data_manager.load_snapshots(&dataset_name).await?;
@@ -193,8 +192,7 @@ impl Navigator {
             return Ok(());
         };
 
-        let snapshot_name = snapshot.name.clone();
-        match crate::zfs::delete_snapshot(&snapshot_name).await {
+        match crate::zfs::delete_snapshot(&snapshot.name).await {
             Ok(()) => {
                 // Reload snapshots after deletion
                 state.data_manager.load_snapshots(dataset_name).await?;
@@ -205,9 +203,9 @@ impl Navigator {
                     state.selected_snapshot_index = state.data_manager.snapshots.len().saturating_sub(1);
                 }
             }
-            Err(e) => {
-                // TODO: Show error message to user
-                eprintln!("Failed to delete snapshot: {}", e);
+            Err(_e) => {
+                // Silently handle deletion errors for now
+                // In a future version, this could be shown in the UI
             }
         }
         state.clear_delete_confirmation();

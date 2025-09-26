@@ -15,10 +15,16 @@ use crate::{
 
 use utils::*;
 
+const DATASET_VIEW_FIXED_WIDTH: usize = 79;
+const SNAPSHOT_VIEW_FIXED_WIDTH: usize = 54;
+const STATUS_BAR_HEIGHT: u16 = 3;
+const HELP_CONTENT_PERCENTAGE: u16 = 70;
+const THEME_SELECTION_PERCENTAGE: u16 = 30;
+
 pub fn draw(f: &mut Frame, app: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .constraints([Constraint::Min(0), Constraint::Length(STATUS_BAR_HEIGHT)])
         .split(f.area());
 
     let visible_height = chunks[0].height.saturating_sub(2) as usize;
@@ -107,140 +113,18 @@ fn draw_pool_list(f: &mut Frame, area: Rect, app: &AppState) {
 
 fn draw_dataset_view(f: &mut Frame, area: Rect, app: &AppState, pool_name: &str) {
     let colors = app.theme_manager.get_colors();
-
-    // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.data_manager.datasets.len(), visible_height);
+    let scaling_values = calculate_dataset_scaling(&app.data_manager.datasets);
+    let name_width = calculate_dataset_name_width(area.width as usize);
 
-    // Find maximum values from all datasets for consistent scaling
-    let max_dataset_size = app.data_manager.datasets
-        .iter()
-        .map(|d| d.referenced)
-        .max()
-        .unwrap_or(1);
-    let max_snapshot_size = app.data_manager.datasets
-        .iter()
-        .map(|d| d.snapshot_used)
-        .max()
-        .unwrap_or(1);
-    let max_total_size = app.data_manager.datasets
-        .iter()
-        .map(|d| d.referenced + d.snapshot_used)
-        .max()
-        .unwrap_or(1);
-
-    // Calculate available width for names dynamically
-    // Format: "NAME D:[bar] S:[bar] T:[bar]"
-    // All bars are same size: " D:" (3) + "[22]" (24) + " S:" (3) + "[22]" (24) + " T:" (3) + "[22]" (24) = 81 chars exactly
-    // Subtracting 2 to shift bars right by 1 column (match snapshot alignment)
-    let fixed_width = 79;
-    let available_width = area.width as usize;
-    let name_width = if available_width > fixed_width {
-        available_width - fixed_width
-    } else {
-        MIN_NAME_WIDTH
-    };
-
-    let items: Vec<ListItem> = app
-        .data_manager
-        .datasets
-        .iter()
-        .skip(start)
-        .take(end - start)
-        .map(|dataset| {
-            let dataset_only = dataset.referenced;
-            let snapshot_used = dataset.snapshot_used;
-
-            let total_used = dataset_only + snapshot_used;
-
-            // Calculate percentages relative to maximum values on screen
-            let dataset_percent = if max_dataset_size > 0 {
-                (dataset_only as f64 / max_dataset_size as f64 * 100.0).min(100.0)
-            } else {
-                0.0
-            };
-            let snapshot_percent = if max_snapshot_size > 0 {
-                (snapshot_used as f64 / max_snapshot_size as f64 * 100.0).min(100.0)
-            } else {
-                0.0
-            };
-            let total_percent = if max_total_size > 0 {
-                (total_used as f64 / max_total_size as f64 * 100.0).min(100.0)
-            } else {
-                0.0
-            };
-
-            let dataset_chars = (BAR_WIDTH as f64 * dataset_percent / 100.0) as usize;
-            let snapshot_chars = (BAR_WIDTH as f64 * snapshot_percent / 100.0) as usize;
-
-            // Create text overlays for the bars
-            let dataset_text = format_bytes(dataset_only);
-            let snapshot_text = format_bytes(snapshot_used);
-            let total_text = format_bytes(total_used);
-
-            let dataset_bar_spans = create_progress_bar_with_text(
-                dataset_chars,
-                '█',
-                dataset_text,
-                colors.accent,  // Background color for filled portion
-                Color::White    // Text color
-            );
-
-            let snapshot_bar_spans = create_progress_bar_with_text(
-                snapshot_chars,
-                '█',  // Same character as dataset
-                snapshot_text,
-                colors.accent,  // Same color as dataset bar
-                Color::White    // Text color
-            );
-
-            let total_chars = (BAR_WIDTH as f64 * total_percent / 100.0) as usize;
-
-            let total_bar_spans = create_progress_bar_with_text(
-                total_chars,
-                '█',  // Same character as other bars
-                total_text,
-                colors.accent,  // Same color as other bars
-                Color::White    // Text color
-            );
-
-            let short_name = dataset.name.strip_prefix(pool_name)
-                .unwrap_or(&dataset.name)
-                .trim_start_matches('/');
-
-            // Handle root dataset case and apply ellipsis
-            let display_name = if short_name.is_empty() || short_name == pool_name {
-                "(root dataset)".to_string()
-            } else {
-                truncate_with_ellipsis(short_name, name_width)
-            };
-
-            let mut content_spans = vec![
-                Span::styled(
-                    format!("{:<width$}", display_name, width = name_width),
-                    Style::default().fg(colors.text),
-                ),
-                Span::raw(" D:"),
-            ];
-
-            // Add dataset bar with text overlay
-            content_spans.extend(dataset_bar_spans);
-
-            content_spans.push(Span::raw(" S:"));
-
-            // Add snapshot bar with text overlay
-            content_spans.extend(snapshot_bar_spans);
-
-            content_spans.push(Span::raw(" T:"));
-
-            // Add total bar with text overlay
-            content_spans.extend(total_bar_spans);
-
-            let content = vec![Line::from(content_spans)];
-
-            ListItem::new(content)
-        })
-        .collect();
+    let items = create_dataset_list_items(
+        &app.data_manager.datasets[start..end],
+        pool_name,
+        &scaling_values,
+        name_width,
+        &colors
+    );
 
     let sort_indicator = app.sort_manager.get_dataset_sort_indicator();
 
@@ -273,110 +157,17 @@ fn draw_snapshot_detail(
     dataset_name: &str,
 ) {
     let colors = app.theme_manager.get_colors();
-
-    // Calculate visible area height (subtract 2 for borders)
     let visible_height = area.height.saturating_sub(2) as usize;
     let (start, end) = app.get_visible_range(app.data_manager.snapshots.len(), visible_height);
+    let scaling_values = calculate_snapshot_scaling(&app.data_manager.snapshots);
+    let name_width = calculate_snapshot_name_width(area.width as usize);
 
-    // Find maximum values from all snapshots for consistent scaling
-    let max_used_size = app.data_manager.snapshots
-        .iter()
-        .map(|s| s.used)
-        .max()
-        .unwrap_or(1);
-    let max_referenced_size = app.data_manager.snapshots
-        .iter()
-        .map(|s| s.referenced)
-        .max()
-        .unwrap_or(1);
-
-    // Calculate available width for names dynamically
-    // Total width minus bars, labels, spacing, and data display
-    // Format: "NAME U:[bar] R:[bar]"
-    // Fixed parts: " U:" (3) + "[22]" (24) + " R:" (3) + "[22]" (24) = 54 chars exactly
-    let fixed_width = 54;
-    let available_width = area.width as usize;
-    let name_width = if available_width > fixed_width {
-        (available_width - fixed_width).max(MIN_NAME_WIDTH)
-    } else {
-        MIN_NAME_WIDTH
-    };
-
-    let items: Vec<ListItem> = app
-        .data_manager
-        .snapshots
-        .iter()
-        .skip(start)
-        .take(end - start)
-        .map(|snapshot| {
-            let snapshot_used = snapshot.used;
-            let snapshot_referenced = snapshot.referenced;
-
-            // Calculate percentages relative to maximum values on screen
-            let used_percent = if max_used_size > 0 {
-                (snapshot_used as f64 / max_used_size as f64 * 100.0).min(100.0)
-            } else {
-                0.0
-            };
-            let referenced_percent = if max_referenced_size > 0 {
-                (snapshot_referenced as f64 / max_referenced_size as f64 * 100.0).min(100.0)
-            } else {
-                0.0
-            };
-
-            let used_chars = (BAR_WIDTH as f64 * used_percent / 100.0) as usize;
-            let referenced_chars = (BAR_WIDTH as f64 * referenced_percent / 100.0) as usize;
-
-            // Create text overlays for the bars
-            let used_text = format_bytes(snapshot_used);
-            let referenced_text = format_bytes(snapshot_referenced);
-
-            let used_bar_spans = create_progress_bar_with_text(
-                used_chars,
-                '█',
-                used_text,
-                colors.accent,  // Same color as other bars
-                Color::White    // Text color
-            );
-
-            let referenced_bar_spans = create_progress_bar_with_text(
-                referenced_chars,
-                '█',
-                referenced_text,
-                colors.accent,  // Same color as other bars
-                Color::White    // Text color
-            );
-
-            // Extract just the snapshot name (after the @)
-            let short_name = snapshot.name
-                .split('@')
-                .next_back()
-                .unwrap_or(&snapshot.name);
-
-            // Truncate name with ellipsis if needed
-            let display_name = truncate_with_ellipsis(short_name, name_width);
-
-            let mut content_spans = vec![
-                Span::styled(
-                    format!("{:<width$}", display_name, width = name_width),
-                    Style::default().fg(colors.text),
-                ),
-                Span::raw(" U:"),
-            ];
-
-            // Add used bar with text overlay
-            content_spans.extend(used_bar_spans);
-
-            content_spans.push(Span::raw(" R:"));
-
-            // Add referenced bar with text overlay
-            content_spans.extend(referenced_bar_spans);
-
-            let content = vec![Line::from(content_spans)];
-
-            ListItem::new(content)
-        })
-        .collect();
+    let items = create_snapshot_list_items(
+        &app.data_manager.snapshots[start..end],
+        &scaling_values,
+        name_width,
+        &colors
+    );
 
     let sort_indicator = app.sort_manager.get_snapshot_sort_indicator();
 
@@ -481,7 +272,7 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
     // Split area into help content and theme selection
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
+        .constraints([Constraint::Percentage(HELP_CONTENT_PERCENTAGE), Constraint::Percentage(THEME_SELECTION_PERCENTAGE)].as_ref())
         .split(area);
 
     // Help content
@@ -562,5 +353,174 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
         .highlight_style(Style::default().bg(colors.highlight).fg(Color::White).add_modifier(Modifier::BOLD));
 
     f.render_widget(theme_list, chunks[1]);
+}
+
+struct DatasetScalingValues {
+    max_dataset_size: u64,
+    max_snapshot_size: u64,
+    max_total_size: u64,
+}
+
+fn calculate_dataset_scaling(datasets: &[crate::zfs::Dataset]) -> DatasetScalingValues {
+    DatasetScalingValues {
+        max_dataset_size: datasets.iter().map(|d| d.referenced).max().unwrap_or(1),
+        max_snapshot_size: datasets.iter().map(|d| d.snapshot_used).max().unwrap_or(1),
+        max_total_size: datasets.iter().map(|d| d.referenced + d.snapshot_used).max().unwrap_or(1),
+    }
+}
+
+fn calculate_dataset_name_width(area_width: usize) -> usize {
+    if area_width > DATASET_VIEW_FIXED_WIDTH {
+        area_width - DATASET_VIEW_FIXED_WIDTH
+    } else {
+        MIN_NAME_WIDTH
+    }
+}
+
+fn create_dataset_list_items<'a>(
+    datasets: &'a [crate::zfs::Dataset],
+    pool_name: &'a str,
+    scaling: &'a DatasetScalingValues,
+    name_width: usize,
+    colors: &'a crate::theme::ThemeColors,
+) -> Vec<ListItem<'a>> {
+    datasets.iter().map(|dataset| {
+        let dataset_only = dataset.referenced;
+        let snapshot_used = dataset.snapshot_used;
+        let total_used = dataset_only + snapshot_used;
+
+        let dataset_percent = if scaling.max_dataset_size > 0 {
+            (dataset_only as f64 / scaling.max_dataset_size as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        let snapshot_percent = if scaling.max_snapshot_size > 0 {
+            (snapshot_used as f64 / scaling.max_snapshot_size as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        let total_percent = if scaling.max_total_size > 0 {
+            (total_used as f64 / scaling.max_total_size as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+
+        let dataset_chars = (BAR_WIDTH as f64 * dataset_percent / 100.0) as usize;
+        let snapshot_chars = (BAR_WIDTH as f64 * snapshot_percent / 100.0) as usize;
+        let total_chars = (BAR_WIDTH as f64 * total_percent / 100.0) as usize;
+
+        let dataset_text = format_bytes(dataset_only);
+        let snapshot_text = format_bytes(snapshot_used);
+        let total_text = format_bytes(total_used);
+
+        let dataset_bar_spans = create_progress_bar_with_text(
+            dataset_chars, '█', dataset_text, colors.accent, Color::White
+        );
+        let snapshot_bar_spans = create_progress_bar_with_text(
+            snapshot_chars, '█', snapshot_text, colors.accent, Color::White
+        );
+        let total_bar_spans = create_progress_bar_with_text(
+            total_chars, '█', total_text, colors.accent, Color::White
+        );
+
+        let short_name = dataset.name.strip_prefix(pool_name)
+            .unwrap_or(&dataset.name)
+            .trim_start_matches('/');
+
+        let display_name = if short_name.is_empty() || short_name == pool_name {
+            "(root dataset)".to_string()
+        } else {
+            truncate_with_ellipsis(short_name, name_width)
+        };
+
+        let mut content_spans = vec![
+            Span::styled(
+                format!("{:<width$}", display_name, width = name_width),
+                Style::default().fg(colors.text),
+            ),
+            Span::raw(" D:"),
+        ];
+
+        content_spans.extend(dataset_bar_spans);
+        content_spans.push(Span::raw(" S:"));
+        content_spans.extend(snapshot_bar_spans);
+        content_spans.push(Span::raw(" T:"));
+        content_spans.extend(total_bar_spans);
+
+        ListItem::new(vec![Line::from(content_spans)])
+    }).collect()
+}
+
+struct SnapshotScalingValues {
+    max_used_size: u64,
+    max_referenced_size: u64,
+}
+
+fn calculate_snapshot_scaling(snapshots: &[crate::zfs::Snapshot]) -> SnapshotScalingValues {
+    SnapshotScalingValues {
+        max_used_size: snapshots.iter().map(|s| s.used).max().unwrap_or(1),
+        max_referenced_size: snapshots.iter().map(|s| s.referenced).max().unwrap_or(1),
+    }
+}
+
+fn calculate_snapshot_name_width(area_width: usize) -> usize {
+    if area_width > SNAPSHOT_VIEW_FIXED_WIDTH {
+        (area_width - SNAPSHOT_VIEW_FIXED_WIDTH).max(MIN_NAME_WIDTH)
+    } else {
+        MIN_NAME_WIDTH
+    }
+}
+
+fn create_snapshot_list_items<'a>(
+    snapshots: &'a [crate::zfs::Snapshot],
+    scaling: &'a SnapshotScalingValues,
+    name_width: usize,
+    colors: &'a crate::theme::ThemeColors,
+) -> Vec<ListItem<'a>> {
+    snapshots.iter().map(|snapshot| {
+        let snapshot_used = snapshot.used;
+        let snapshot_referenced = snapshot.referenced;
+
+        let used_percent = if scaling.max_used_size > 0 {
+            (snapshot_used as f64 / scaling.max_used_size as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        let referenced_percent = if scaling.max_referenced_size > 0 {
+            (snapshot_referenced as f64 / scaling.max_referenced_size as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+
+        let used_chars = (BAR_WIDTH as f64 * used_percent / 100.0) as usize;
+        let referenced_chars = (BAR_WIDTH as f64 * referenced_percent / 100.0) as usize;
+
+        let used_text = format_bytes(snapshot_used);
+        let referenced_text = format_bytes(snapshot_referenced);
+
+        let used_bar_spans = create_progress_bar_with_text(
+            used_chars, '█', used_text, colors.accent, Color::White
+        );
+        let referenced_bar_spans = create_progress_bar_with_text(
+            referenced_chars, '█', referenced_text, colors.accent, Color::White
+        );
+
+        let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+        let display_name = truncate_with_ellipsis(short_name, name_width);
+
+        let mut content_spans = vec![
+            Span::styled(
+                format!("{:<width$}", display_name, width = name_width),
+                Style::default().fg(colors.text),
+            ),
+            Span::raw(" U:"),
+        ];
+
+        content_spans.extend(used_bar_spans);
+        content_spans.push(Span::raw(" R:"));
+        content_spans.extend(referenced_bar_spans);
+
+        ListItem::new(vec![Line::from(content_spans)])
+    }).collect()
 }
 

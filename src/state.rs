@@ -146,7 +146,7 @@ impl AppState {
 
     pub fn is_delete_confirmation_expired(&self) -> bool {
         if let Some(timestamp) = self.delete_confirmation_timestamp {
-            timestamp.elapsed().as_secs() >= 3
+            timestamp.elapsed().as_secs() >= crate::navigation::DELETE_CONFIRMATION_TIMEOUT_SECS
         } else {
             false
         }
