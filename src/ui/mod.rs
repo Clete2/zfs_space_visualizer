@@ -192,26 +192,27 @@ fn draw_snapshot_detail(
     f.render_stateful_widget(snapshots_list, area, &mut list_state);
 }
 
-fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
-    // Helper function to get delete confirmation text
-    fn get_delete_help_text(app: &AppState) -> (String, Color) {
-        // Check for error first
-        if let Some(error) = &app.error_message {
-            return (format!("ERROR: {} (Press any key to continue)", error), Color::Red);
-        }
-
-        // Check for delete confirmation
-        if app.delete_confirmation_pending {
-            if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
-                let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
-                (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM or wait 3s to cancel", short_name), Color::Yellow)
-            } else {
-                ("⚠️  Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string(), Color::Yellow)
-            }
-        } else {
-            ("↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(), Color::Reset)
-        }
+// Helper function to get delete confirmation text
+fn get_delete_help_text(app: &AppState) -> (String, Color) {
+    // Check for error first
+    if let Some(error) = &app.error_message {
+        return (format!("ERROR: {} (Press any key to continue)", error), Color::Red);
     }
+
+    // Check for delete confirmation
+    if app.delete_confirmation_pending {
+        if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
+            let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+            (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM or wait 3s to cancel", short_name), Color::Yellow)
+        } else {
+            ("⚠️  Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string(), Color::Yellow)
+        }
+    } else {
+        ("↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(), Color::Reset)
+    }
+}
+
+fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
     let colors = app.theme_manager.get_colors();
     let prefetch_status = if app.data_manager.is_prefetch_complete() {
         "".to_string()
