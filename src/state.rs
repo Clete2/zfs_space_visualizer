@@ -35,6 +35,9 @@ pub struct AppState {
     // Deletion confirmation state
     pub delete_confirmation_pending: bool,
     pub delete_confirmation_timestamp: Option<Instant>,
+
+    // Error state
+    pub error_message: Option<String>,
 }
 
 impl Default for AppState {
@@ -53,6 +56,7 @@ impl Default for AppState {
             theme_manager: ThemeManager::new(),
             delete_confirmation_pending: false,
             delete_confirmation_timestamp: None,
+            error_message: None,
         }
     }
 }
@@ -150,5 +154,13 @@ impl AppState {
         } else {
             false
         }
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.error_message = Some(message);
+    }
+
+    pub fn clear_error(&mut self) {
+        self.error_message = None;
     }
 }

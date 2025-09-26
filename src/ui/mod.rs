@@ -194,15 +194,22 @@ fn draw_snapshot_detail(
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
     // Helper function to get delete confirmation text
-    fn get_delete_help_text(app: &AppState) -> String {
+    fn get_delete_help_text(app: &AppState) -> (String, Color) {
+        // Check for error first
+        if let Some(error) = &app.error_message {
+            return (format!("ERROR: {} (Press any key to continue)", error), Color::Red);
+        }
+
+        // Check for delete confirmation
         if app.delete_confirmation_pending {
             if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
-                format!("Are you sure you want to delete {}? Press 'd' again to confirm.", snapshot.name)
+                let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+                (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM or wait 3s to cancel", short_name), Color::Yellow)
             } else {
-                "Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string()
+                ("⚠️  Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string(), Color::Yellow)
             }
         } else {
-            "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+            ("↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(), Color::Reset)
         }
     }
     let colors = app.theme_manager.get_colors();
@@ -217,13 +224,14 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
         }
     };
 
-    let (status_text, help_text) = match &app.current_view {
+    let (status_text, help_text, help_color) = match &app.current_view {
         AppView::PoolList => {
             let total = app.data_manager.pools.len();
             let current = if total > 0 { app.selected_pool_index + 1 } else { 0 };
             (
                 format!("Pool List ({}/{}){}",  current, total, prefetch_status),
-                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Datasets | h: Help | q: Quit".to_string()
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Datasets | h: Help | q: Quit".to_string(),
+                Color::Reset
             )
         },
         AppView::DatasetView(pool_name) => {
@@ -231,20 +239,24 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             let current = if total > 0 { app.selected_dataset_index + 1 } else { 0 };
             (
                 format!("Datasets in {} ({}/{}){}",  pool_name, current, total, prefetch_status),
-                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+                "↑/↓: Navigate | PgUp/PgDn: Page | →/Enter: View Snapshots | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(),
+                Color::Reset
             )
         },
         AppView::SnapshotDetail(_, dataset_name) => {
             let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
+            let (help_text, help_color) = get_delete_help_text(app);
             (
                 format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
-                get_delete_help_text(app)
+                help_text,
+                help_color
             )
         },
         AppView::Help => (
             format!("Help & Settings{}", prefetch_status),
-            "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit".to_string()
+            "↑/↓: Select Theme | Enter: Apply Theme | ←/Esc: Back | q: Quit".to_string(),
+            Color::Reset
         ),
     };
 
@@ -253,7 +265,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             Span::styled(&status_text, Style::default().fg(colors.accent)),
         ]),
         Line::from(vec![
-            Span::styled(&help_text, Style::default().fg(colors.text)),
+            Span::styled(&help_text, Style::default().fg(help_color)),
         ]),
     ])
     .block(

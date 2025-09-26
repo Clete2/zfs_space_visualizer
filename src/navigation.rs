@@ -14,6 +14,8 @@ impl Navigator {
         key: KeyCode,
         modifiers: KeyModifiers,
     ) -> Result<()> {
+        // Clear any error message on any key press
+        state.clear_error();
         match &state.current_view {
             AppView::Help => {
                 match key {
@@ -196,9 +198,9 @@ impl Navigator {
             state.clear_delete_confirmation();
             return Ok(());
         };
-
         match crate::zfs::delete_snapshot(&snapshot.name).await {
             Ok(()) => {
+                eprintln!("Debug: Snapshot deleted successfully");
                 // Reload snapshots after deletion
                 state.data_manager.load_snapshots(dataset_name).await?;
                 state.sort_manager.sort_snapshots(&mut state.data_manager.snapshots);
@@ -208,9 +210,18 @@ impl Navigator {
                     state.selected_snapshot_index = state.data_manager.snapshots.len().saturating_sub(1);
                 }
             }
-            Err(_e) => {
-                // Silently handle deletion errors for now
-                // In a future version, this could be shown in the UI
+            Err(e) => {
+                // Extract a user-friendly error message
+                let error_msg = if e.to_string().contains("permission denied") {
+                    "Permission denied. Try running with elevated privileges (sudo).".to_string()
+                } else if e.to_string().contains("dataset does not exist") {
+                    "Snapshot no longer exists.".to_string()
+                } else if e.to_string().contains("dataset is busy") {
+                    "Snapshot is currently in use and cannot be deleted.".to_string()
+                } else {
+                    format!("Failed to delete snapshot: {}", e)
+                };
+                state.set_error(error_msg);
             }
         }
         state.clear_delete_confirmation();
