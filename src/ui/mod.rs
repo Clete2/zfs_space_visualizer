@@ -203,9 +203,9 @@ fn get_delete_help_text(app: &AppState) -> (String, Color) {
     if app.delete_confirmation_pending {
         if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
             let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
-            (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM or wait 3s to cancel", short_name), Color::Yellow)
+            (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name), Color::Yellow)
         } else {
-            ("⚠️  Press 'd' again to CONFIRM DELETION or wait 3 seconds to cancel".to_string(), Color::Yellow)
+            ("⚠️  Press 'd' again to CONFIRM DELETION".to_string(), Color::Yellow)
         }
     } else {
         ("↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(), Color::Reset)
@@ -248,8 +248,18 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
             let (help_text, help_color) = get_delete_help_text(app);
+            let status_text = if app.delete_confirmation_pending {
+                if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
+                    let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+                    format!("⚠️  DELETE {}: Press 'd' again to CONFIRM - Snapshots in {} ({}/{}){}", short_name, dataset_name, current, total, prefetch_status)
+                } else {
+                    format!("⚠️  Press 'd' again to CONFIRM DELETION - Snapshots in {} ({}/{}){}", dataset_name, current, total, prefetch_status)
+                }
+            } else {
+                format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status)
+            };
             (
-                format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status),
+                status_text,
                 help_text,
                 help_color
             )

@@ -14,8 +14,13 @@ impl Navigator {
         key: KeyCode,
         modifiers: KeyModifiers,
     ) -> Result<()> {
-        // Clear any error message on any key press
-        state.clear_error();
+        // Clear any error message on any key press (but not during delete operations)
+        let clearing_error = state.error_message.is_some();
+        if clearing_error {
+            state.clear_error();
+            // If we're just clearing an error, don't process other key actions
+            return Ok(());
+        }
         match &state.current_view {
             AppView::Help => {
                 match key {
