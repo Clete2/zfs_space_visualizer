@@ -35,11 +35,10 @@ impl App {
             terminal.draw(|f| crate::ui::draw(f, &mut self.state))?;
 
             // Use timeout to allow periodic UI updates during background operations
-            if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
+            if event::poll(std::time::Duration::from_millis(100))?
+                && let Event::Key(key) = event::read()? {
                     Navigator::handle_key_event(&mut self.state, key.code, key.modifiers).await?;
                 }
-            }
 
             if self.state.should_quit {
                 break;
