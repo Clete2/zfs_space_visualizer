@@ -192,25 +192,6 @@ fn draw_snapshot_detail(
     f.render_stateful_widget(snapshots_list, area, &mut list_state);
 }
 
-// Helper function to get delete confirmation text
-fn get_delete_help_text(app: &AppState) -> (String, Color) {
-    // Check for error first
-    if let Some(error) = &app.error_message {
-        return (format!("ERROR: {} (Press any key to continue)", error), Color::Red);
-    }
-
-    // Check for delete confirmation
-    if app.delete_confirmation_pending {
-        if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
-            let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
-            (format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name), Color::Yellow)
-        } else {
-            ("⚠️  Press 'd' again to CONFIRM DELETION".to_string(), Color::Yellow)
-        }
-    } else {
-        ("↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(), Color::Reset)
-    }
-}
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
     let colors = app.theme_manager.get_colors();
@@ -247,7 +228,6 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
         AppView::SnapshotDetail(_, dataset_name) => {
             let total = app.data_manager.snapshots.len();
             let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
-            let (help_text, help_color) = get_delete_help_text(app);
             let status_text = if app.delete_confirmation_pending {
                 if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
                     let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
@@ -260,8 +240,8 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             };
             (
                 status_text,
-                help_text,
-                help_color
+                app.status_help_text.clone(),
+                app.status_help_color
             )
         },
         AppView::Help => (

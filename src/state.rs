@@ -38,6 +38,10 @@ pub struct AppState {
 
     // Error state
     pub error_message: Option<String>,
+
+    // Cached status text
+    pub status_help_text: String,
+    pub status_help_color: ratatui::style::Color,
 }
 
 impl Default for AppState {
@@ -57,6 +61,8 @@ impl Default for AppState {
             delete_confirmation_pending: false,
             delete_confirmation_timestamp: None,
             error_message: None,
+            status_help_text: "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(),
+            status_help_color: ratatui::style::Color::Reset,
         }
     }
 }
@@ -141,11 +147,13 @@ impl AppState {
     pub fn start_delete_confirmation(&mut self) {
         self.delete_confirmation_pending = true;
         self.delete_confirmation_timestamp = Some(Instant::now());
+        self.update_status_help_text();
     }
 
     pub fn clear_delete_confirmation(&mut self) {
         self.delete_confirmation_pending = false;
         self.delete_confirmation_timestamp = None;
+        self.update_status_help_text();
     }
 
     pub fn is_delete_confirmation_expired(&self) -> bool {
@@ -158,9 +166,40 @@ impl AppState {
 
     pub fn set_error(&mut self, message: String) {
         self.error_message = Some(message);
+        self.update_status_help_text();
     }
 
     pub fn clear_error(&mut self) {
         self.error_message = None;
+        self.update_status_help_text();
+    }
+
+    pub fn update_status_help_text(&mut self) {
+        // Check for error first
+        if let Some(error) = &self.error_message {
+            self.status_help_text = format!("ERROR: {} (Press any key to continue)", error);
+            self.status_help_color = ratatui::style::Color::Red;
+            return;
+        }
+
+        // Check for delete confirmation (only in snapshot view)
+        if self.delete_confirmation_pending {
+            if let crate::state::AppView::SnapshotDetail(_, _) = &self.current_view {
+                if let Some(snapshot) = self.data_manager.snapshots.get(self.selected_snapshot_index) {
+                    let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+                    self.status_help_text = format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name);
+                    self.status_help_color = ratatui::style::Color::Yellow;
+                } else {
+                    self.status_help_text = "⚠️  Press 'd' again to CONFIRM DELETION".to_string();
+                    self.status_help_color = ratatui::style::Color::Yellow;
+                }
+            } else {
+                self.status_help_text = "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string();
+                self.status_help_color = ratatui::style::Color::Reset;
+            }
+        } else {
+            self.status_help_text = "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string();
+            self.status_help_color = ratatui::style::Color::Reset;
+        }
     }
 }
