@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `./build.sh x86_64-unknown-linux-gnu` - Build for Linux (requires cross tool and Docker)
 
 # Behaviors
-- Always run `cargo clippy --fix --allow-dirty` before all commits
+- Run `cargo clippy --fix --allow-dirty` before commits that include Rust code changes
 
 ## Architecture Overview
 
