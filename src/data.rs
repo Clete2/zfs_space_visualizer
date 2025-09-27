@@ -140,6 +140,13 @@ impl DataManager {
         Ok(())
     }
 
+    pub async fn reload_snapshots(&mut self, dataset_name: &str) -> Result<()> {
+        // Force reload from ZFS, bypassing cache
+        self.snapshots = crate::zfs::get_snapshots(dataset_name).await?;
+        self.cache_snapshots(dataset_name);
+        Ok(())
+    }
+
     pub fn get_cached_snapshots(&self, dataset_name: &str) -> Option<Vec<Snapshot>> {
         self.snapshot_cache
             .lock()

@@ -205,9 +205,8 @@ impl Navigator {
         };
         match crate::zfs::delete_snapshot(&snapshot.name).await {
             Ok(()) => {
-                eprintln!("Debug: Snapshot deleted successfully");
-                // Reload snapshots after deletion
-                state.data_manager.load_snapshots(dataset_name).await?;
+                // Force reload snapshots from ZFS after deletion
+                state.data_manager.reload_snapshots(dataset_name).await?;
                 state.sort_manager.sort_snapshots(&mut state.data_manager.snapshots);
 
                 // Adjust selection if we deleted the last item
