@@ -180,7 +180,7 @@ impl AppState {
     pub fn update_status_help_text(&mut self) {
         // Check for error first
         if let Some(error) = &self.error_message {
-            self.status_help_text = format!("\x1b[2K\x1b[31mERROR: {} (Press any key to continue)\x1b[0m", error);
+            self.status_help_text = format!("\x1b[31mERROR: {} (Press any key to continue)\x1b[0m", error);
             self.status_help_color = ratatui::style::Color::Red;
             return;
         }

@@ -304,10 +304,17 @@ fn draw_help_screen(f: &mut Frame, area: Rect, app: &AppState) {
         Line::from("  Snapshot View  Shows snapshots in selected dataset"),
         Line::from(""),
         Line::from("LEGEND:"),
+        Line::from("  Pool List:"),
+        Line::from("    Usage: █ Space used / total capacity"),
+        Line::from(""),
         Line::from("  Dataset View:"),
-        Line::from("    D: █ Dataset data    S: █ Snapshot data"),
+        Line::from("    D: █ Dataset-only data (excludes snapshots)"),
+        Line::from("    S: █ Snapshot data (used by snapshots)"),
+        Line::from("    T: █ Total used space (dataset + snapshots)"),
+        Line::from(""),
         Line::from("  Snapshot View:"),
-        Line::from("    U: █ Used space     R: █ Referenced data"),
+        Line::from("    U: █ Used space (actual disk usage)"),
+        Line::from("    R: █ Referenced data (logical size)"),
     ];
 
     let help_paragraph = Paragraph::new(help_text)
