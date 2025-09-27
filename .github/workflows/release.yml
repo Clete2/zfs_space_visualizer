@@ -84,4 +84,17 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           changelog-file: CHANGELOG.md
           update-file: Cargo.toml
-          assets: release-assets/
+
+      - name: Upload release assets
+        if: steps.semantic.outputs.new_release_published == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload all binary artifacts to the release
+          for file in release-assets/zfs_space_visualizer-*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "Uploading $filename..."
+              gh release upload "v${{ steps.semantic.outputs.new_release_version }}" "$file" --clobber
+            fi
+          done
