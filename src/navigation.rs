@@ -228,6 +228,7 @@ impl Navigator {
                 state.set_error(error_msg);
             }
         }
+
         state.clear_delete_confirmation();
         Ok(())
     }

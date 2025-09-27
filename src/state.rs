@@ -153,7 +153,10 @@ impl AppState {
     pub fn clear_delete_confirmation(&mut self) {
         self.delete_confirmation_pending = false;
         self.delete_confirmation_timestamp = None;
-        self.update_status_help_text();
+        // Only update status help text if there's no error to preserve
+        if self.error_message.is_none() {
+            self.update_status_help_text();
+        }
     }
 
     pub fn is_delete_confirmation_expired(&self) -> bool {
