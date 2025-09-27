@@ -62,8 +62,8 @@ jobs:
     permissions:
       contents: write
     outputs:
-      released: ${{ steps.semantic.outputs.new_release_published }}
-      version: ${{ steps.semantic.outputs.new_release_version }}
+      released: ${{ steps.semantic.outputs.version != '' }}
+      version: ${{ steps.semantic.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,7 +86,7 @@ jobs:
           update-file: Cargo.toml
 
       - name: Upload release assets
-        if: steps.semantic.outputs.new_release_published == 'true'
+        if: steps.semantic.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -95,6 +95,6 @@ jobs:
             if [ -f "$file" ]; then
               filename=$(basename "$file")
               echo "Uploading $filename..."
-              gh release upload "v${{ steps.semantic.outputs.new_release_version }}" "$file" --clobber
+              gh release upload "v${{ steps.semantic.outputs.version }}" "$file" --clobber
             fi
           done
