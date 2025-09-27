@@ -226,23 +226,32 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
             )
         },
         AppView::SnapshotDetail(_, dataset_name) => {
-            let total = app.data_manager.snapshots.len();
-            let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
-            let status_text = if app.delete_confirmation_pending {
-                if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
-                    let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
-                    format!("⚠️  DELETE {}: Press 'd' again to CONFIRM - Snapshots in {} ({}/{}){}", short_name, dataset_name, current, total, prefetch_status)
-                } else {
-                    format!("⚠️  Press 'd' again to CONFIRM DELETION - Snapshots in {} ({}/{}){}", dataset_name, current, total, prefetch_status)
-                }
+            // Check for error state first - if there's an error, show it prominently
+            if app.error_message.is_some() {
+                (
+                    app.status_help_text.clone(),
+                    "".to_string(),
+                    app.status_help_color
+                )
             } else {
-                format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status)
-            };
-            (
-                status_text,
-                app.status_help_text.clone(),
-                app.status_help_color
-            )
+                let total = app.data_manager.snapshots.len();
+                let current = if total > 0 { app.selected_snapshot_index + 1 } else { 0 };
+                let status_text = if app.delete_confirmation_pending {
+                    if let Some(snapshot) = app.data_manager.snapshots.get(app.selected_snapshot_index) {
+                        let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
+                        format!("⚠️  DELETE {}: Press 'd' again to CONFIRM - Snapshots in {} ({}/{}){}", short_name, dataset_name, current, total, prefetch_status)
+                    } else {
+                        format!("⚠️  Press 'd' again to CONFIRM DELETION - Snapshots in {} ({}/{}){}", dataset_name, current, total, prefetch_status)
+                    }
+                } else {
+                    format!("Snapshots in {} ({}/{}){}",  dataset_name, current, total, prefetch_status)
+                };
+                (
+                    status_text,
+                    app.status_help_text.clone(),
+                    app.status_help_color
+                )
+            }
         },
         AppView::Help => (
             format!("Help & Settings{}", prefetch_status),
