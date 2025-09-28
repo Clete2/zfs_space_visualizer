@@ -24,10 +24,29 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
+  get-version:
+    name: Get next version
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    outputs:
+      version: ${{ steps.semantic.outputs.version }}
+      has-next-version: ${{ steps.semantic.outputs.version != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Semantic Release (dry-run)
+        id: semantic
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry: true
+
   build:
     name: Build binaries
     runs-on: ubuntu-latest
-    needs: test
+    needs: get-version
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     strategy:
       matrix:
@@ -42,6 +61,10 @@ jobs:
           key: ${{ matrix.target }}
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Update Cargo.toml version
+        if: needs.get-version.outputs.has-next-version == 'true'
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ needs.get-version.outputs.version }}"/' Cargo.toml
       - name: Build for ${{ matrix.target }}
         run: cross build --release --target ${{ matrix.target }}
       - name: Create artifact
@@ -57,7 +80,7 @@ jobs:
   release:
     name: Create release
     runs-on: ubuntu-latest
-    needs: build
+    needs: [get-version, build]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: write
