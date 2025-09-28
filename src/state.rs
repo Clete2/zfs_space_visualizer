@@ -2,6 +2,7 @@ use crate::{
     data::DataManager,
     sorting::SortManager,
     theme::ThemeManager,
+    config::Config,
 };
 use std::time::Instant;
 
@@ -32,6 +33,9 @@ pub struct AppState {
     pub sort_manager: SortManager,
     pub theme_manager: ThemeManager,
 
+    // Configuration
+    pub config: Config,
+
     // Deletion confirmation state
     pub delete_confirmation_pending: bool,
     pub delete_confirmation_timestamp: Option<Instant>,
@@ -44,8 +48,17 @@ pub struct AppState {
     pub status_help_color: ratatui::style::Color,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+impl AppState {
+    pub fn new(config: Config) -> Self {
+        let thread_count = config.effective_thread_count();
+        let readonly = config.readonly;
+
+        let status_help_text = if readonly {
+            "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit (READONLY MODE)".to_string()
+        } else {
+            "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+        };
+
         Self {
             should_quit: false,
             current_view: AppView::PoolList,
@@ -55,21 +68,16 @@ impl Default for AppState {
             selected_snapshot_index: 0,
             dataset_scroll_offset: 0,
             snapshot_scroll_offset: 0,
-            data_manager: DataManager::new(),
+            data_manager: DataManager::new(thread_count),
             sort_manager: SortManager::new(),
             theme_manager: ThemeManager::new(),
+            config,
             delete_confirmation_pending: false,
             delete_confirmation_timestamp: None,
             error_message: None,
-            status_help_text: "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string(),
+            status_help_text,
             status_help_color: ratatui::style::Color::Reset,
         }
-    }
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn get_visible_range(&self, total_items: usize, visible_height: usize) -> (usize, usize) {
@@ -185,24 +193,26 @@ impl AppState {
             return;
         }
 
-        // Check for delete confirmation (only in snapshot view)
-        if self.delete_confirmation_pending {
+        // Check for delete confirmation (only in snapshot view and not readonly)
+        if self.delete_confirmation_pending && !self.config.readonly {
             if let crate::state::AppView::SnapshotDetail(_, _) = &self.current_view {
                 if let Some(snapshot) = self.data_manager.snapshots.get(self.selected_snapshot_index) {
                     let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
                     self.status_help_text = format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name);
-                    self.status_help_color = ratatui::style::Color::Yellow;
                 } else {
                     self.status_help_text = "⚠️  Press 'd' again to CONFIRM DELETION".to_string();
-                    self.status_help_color = ratatui::style::Color::Yellow;
                 }
-            } else {
-                self.status_help_text = "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string();
-                self.status_help_color = ratatui::style::Color::Reset;
+                self.status_help_color = ratatui::style::Color::Yellow;
+                return;
             }
-        } else {
-            self.status_help_text = "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string();
-            self.status_help_color = ratatui::style::Color::Reset;
         }
+
+        // Default status text
+        self.status_help_text = if self.config.readonly {
+            "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit (READONLY MODE)".to_string()
+        } else {
+            "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+        };
+        self.status_help_color = ratatui::style::Color::Reset;
     }
 }

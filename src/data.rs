@@ -8,9 +8,6 @@ use tokio::task;
 
 use crate::zfs::{Pool, Dataset, Snapshot};
 
-const IO_CONCURRENCY_MULTIPLIER: usize = 8;
-const DEFAULT_CPU_COUNT: usize = 4;
-
 pub struct DataManager {
     pub pools: Vec<Pool>,
     pub datasets: Vec<Dataset>,
@@ -19,10 +16,11 @@ pub struct DataManager {
     pub prefetch_complete: Arc<AtomicBool>,
     pub prefetch_total: Arc<AtomicUsize>,
     pub prefetch_completed: Arc<AtomicUsize>,
+    pub thread_count: usize,
 }
 
-impl Default for DataManager {
-    fn default() -> Self {
+impl DataManager {
+    pub fn new(thread_count: usize) -> Self {
         Self {
             pools: Vec::new(),
             datasets: Vec::new(),
@@ -31,13 +29,8 @@ impl Default for DataManager {
             prefetch_complete: Arc::new(AtomicBool::new(false)),
             prefetch_total: Arc::new(AtomicUsize::new(0)),
             prefetch_completed: Arc::new(AtomicUsize::new(0)),
+            thread_count,
         }
-    }
-}
-
-impl DataManager {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub async fn load_pools(&mut self) -> Result<()> {
@@ -55,6 +48,7 @@ impl DataManager {
         let prefetch_complete = Arc::clone(&self.prefetch_complete);
         let prefetch_total = Arc::clone(&self.prefetch_total);
         let prefetch_completed = Arc::clone(&self.prefetch_completed);
+        let thread_count = self.thread_count;
 
         task::spawn(async move {
             // Get all datasets from all pools
@@ -77,11 +71,8 @@ impl DataManager {
             prefetch_completed.store(0, Ordering::Relaxed);
 
             // Create semaphore to limit concurrent snapshot fetches
-            // Use CPU count with I/O multiplier for optimal concurrency
-            let cpu_count = std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(DEFAULT_CPU_COUNT);
-            let max_concurrent = cpu_count * IO_CONCURRENCY_MULTIPLIER;
+            // Use configured thread count
+            let max_concurrent = thread_count;
             let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
 
             // Prefetch snapshots for each dataset in parallel

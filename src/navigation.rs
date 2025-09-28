@@ -39,7 +39,7 @@ impl Navigator {
                     KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => state.should_quit = true,
                     KeyCode::Char('h') => Self::show_help(state),
                     KeyCode::Char('s') => Self::toggle_sort(state),
-                    KeyCode::Char('d') => Self::handle_delete_key(state).await?,
+                    KeyCode::Char('d') if !state.config.readonly => Self::handle_delete_key(state).await?,
                     KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => Self::go_back(state).await?,
                     KeyCode::Enter | KeyCode::Right => Self::go_forward(state).await?,
                     KeyCode::Up => Self::previous_item(state),

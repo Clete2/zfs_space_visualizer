@@ -2,23 +2,17 @@ use anyhow::Result;
 use crossterm::event::{self, Event};
 use ratatui::{backend::Backend, Terminal};
 
-use crate::navigation::Navigator;
+use crate::{navigation::Navigator, config::Config};
 
 pub struct App {
     state: crate::state::AppState,
 }
 
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            state: crate::state::AppState::new(),
-        }
-    }
-}
-
 impl App {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(config: Config) -> Self {
+        Self {
+            state: crate::state::AppState::new(config),
+        }
     }
 
     pub async fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {

@@ -6,6 +6,7 @@ mod navigation;
 mod data;
 mod sorting;
 mod theme;
+mod config;
 
 use anyhow::Result;
 use crossterm::{
@@ -17,6 +18,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use app::App;
+use config::Config;
 
 struct TerminalGuard;
 
@@ -37,10 +39,19 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command line arguments
+    let config = Config::parse_args();
+
+    // Validate configuration
+    if let Err(e) = config.validate() {
+        eprintln!("Configuration error: {}", e);
+        std::process::exit(1);
+    }
+
     let _guard = TerminalGuard;
     let mut terminal = setup_terminal()?;
 
-    let mut app = App::new();
+    let mut app = App::new(config);
     let result = app.run(&mut terminal).await;
 
     terminal.show_cursor()?;
