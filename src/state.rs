@@ -194,8 +194,8 @@ impl AppState {
         }
 
         // Check for delete confirmation (only in snapshot view and not readonly)
-        if self.delete_confirmation_pending && !self.config.readonly {
-            if let crate::state::AppView::SnapshotDetail(_, _) = &self.current_view {
+        if self.delete_confirmation_pending && !self.config.readonly
+            && let crate::state::AppView::SnapshotDetail(_, _) = &self.current_view {
                 if let Some(snapshot) = self.data_manager.snapshots.get(self.selected_snapshot_index) {
                     let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
                     self.status_help_text = format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name);
@@ -205,7 +205,6 @@ impl AppState {
                 self.status_help_color = ratatui::style::Color::Yellow;
                 return;
             }
-        }
 
         // Default status text
         self.status_help_text = if self.config.readonly {
