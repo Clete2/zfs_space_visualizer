@@ -7,6 +7,7 @@ mod data;
 mod sorting;
 mod theme;
 mod config;
+mod update;
 
 use anyhow::Result;
 use crossterm::{
@@ -18,7 +19,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use app::App;
-use config::Config;
+use config::{Config, Commands};
 
 struct TerminalGuard;
 
@@ -41,6 +42,11 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
 async fn main() -> Result<()> {
     // Parse command line arguments
     let config = Config::parse_args();
+
+    // Handle update command before validating config or starting TUI
+    if let Some(Commands::Update) = &config.command {
+        return update::check_and_update().await;
+    }
 
     // Validate configuration
     if let Err(e) = config.validate() {
