@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "zfs_space_visualizer")]
@@ -6,6 +6,9 @@ use clap::Parser;
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[derive(Default)]
 pub struct Config {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
     /// Enable readonly mode (disables delete functionality)
     #[arg(long, help = "Enable readonly mode to disable delete functionality")]
     pub readonly: bool,
@@ -14,6 +17,13 @@ pub struct Config {
     #[arg(long, value_name = "NUM", help = "Number of threads for dataset operations (default: auto-detected)")]
     pub threads: Option<usize>,
 }
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    /// Update the application to the latest version
+    Update,
+}
+
 
 impl Config {
     pub fn parse_args() -> Self {
