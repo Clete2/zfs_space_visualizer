@@ -43,18 +43,16 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry: true
 
-  build:
-    name: Build binaries
+  build-linux:
+    name: Build Linux binaries
     runs-on: ubuntu-latest
-    needs: get-version
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    needs: test
+    if: always() && needs.test.result == 'success'
     strategy:
       matrix:
         target:
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-musl
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -64,11 +62,51 @@ jobs:
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Update Cargo.toml version
-        if: needs.get-version.outputs.has-next-version == 'true'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
-          sed -i 's/^version = ".*"/version = "${{ needs.get-version.outputs.version }}"/' Cargo.toml
+          # Get version from get-version job if it exists
+          if [ "${{ needs.get-version.outputs.has-next-version }}" == "true" ]; then
+            sed -i 's/^version = ".*"/version = "${{ needs.get-version.outputs.version }}"/' Cargo.toml
+          fi
       - name: Build for ${{ matrix.target }}
         run: cross build --release --target ${{ matrix.target }}
+      - name: Create artifact
+        run: |
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/zfs_space_visualizer artifacts/zfs_space_visualizer-${{ matrix.target }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zfs_space_visualizer-${{ matrix.target }}
+          path: artifacts/zfs_space_visualizer-${{ matrix.target }}
+
+  build-macos:
+    name: Build macOS binaries
+    runs-on: macos-latest
+    needs: test
+    if: always() && needs.test.result == 'success'
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Update Cargo.toml version
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: |
+          # Get version from get-version job if it exists
+          if [ "${{ needs.get-version.outputs.has-next-version }}" == "true" ]; then
+            sed -i '' 's/^version = ".*"/version = "${{ needs.get-version.outputs.version }}"/' Cargo.toml
+          fi
+      - name: Build for ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
       - name: Create artifact
         run: |
           mkdir -p artifacts
@@ -82,7 +120,7 @@ jobs:
   release:
     name: Create release
     runs-on: ubuntu-latest
-    needs: [get-version, build]
+    needs: [get-version, build-linux, build-macos]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: write
