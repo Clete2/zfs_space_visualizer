@@ -199,26 +199,20 @@ impl AppState {
                 if let Some(snapshot) = self.data_manager.snapshots.get(self.selected_snapshot_index) {
                     let short_name = snapshot.name.split('@').next_back().unwrap_or(&snapshot.name);
                     self.status_help_text = format!("⚠️  DELETE {}: Press 'd' again to CONFIRM", short_name);
-                    self.status_help_color = ratatui::style::Color::Yellow;
                 } else {
                     self.status_help_text = "⚠️  Press 'd' again to CONFIRM DELETION".to_string();
-                    self.status_help_color = ratatui::style::Color::Yellow;
                 }
-            } else {
-                self.status_help_text = if self.config.readonly {
-                    "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit (READONLY MODE)".to_string()
-                } else {
-                    "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
-                };
-                self.status_help_color = ratatui::style::Color::Reset;
+                self.status_help_color = ratatui::style::Color::Yellow;
+                return;
             }
-        } else {
-            self.status_help_text = if self.config.readonly {
-                "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit (READONLY MODE)".to_string()
-            } else {
-                "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
-            };
-            self.status_help_color = ratatui::style::Color::Reset;
         }
+
+        // Default status text
+        self.status_help_text = if self.config.readonly {
+            "↑/↓: Navigate | PgUp/PgDn: Page | s: Sort | ←/Esc: Back | h: Help | q: Quit (READONLY MODE)".to_string()
+        } else {
+            "↑/↓: Navigate | PgUp/PgDn: Page | d: Delete | s: Sort | ←/Esc: Back | h: Help | q: Quit".to_string()
+        };
+        self.status_help_color = ratatui::style::Color::Reset;
     }
 }
